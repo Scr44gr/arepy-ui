@@ -1,0 +1,193 @@
+site_name: arepy-ui
+site_description: UI library for Arepy game engine
+site_url: https://scr44gr.github.io/arepy-ui
+repo_url: https://github.com/Scr44gr/arepy-ui
+repo_name: Scr44gr/arepy-ui
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  palette:
+    - scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - search.suggest
+    - search.highlight
+    - search.share
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+plugins:
+  - search
+  - offline
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      effect: zoom
+      slide_effect: slide
+      width: 100%
+      height: auto
+      zoomable: true
+      draggable: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+      fallback_to_build_date: true
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.snippets
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.tilde
+  - pymdownx.smartsymbols
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - tables
+  - def_list
+  - footnotes
+  - abbr
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Scr44gr/arepy-ui
+  generator: false
+
+nav:
+  - Home: index.md
+  
+  # LEARN - Teaching section (How-To)
+  - Learn:
+    - learn/index.md
+    - Getting Started: learn/getting-started.md
+    - Your First UI: learn/first-ui.md
+    - Core Concepts:
+      - learn/concepts/index.md
+      - Understanding Nodes: learn/concepts/nodes.md
+      - Styles & Layout: learn/concepts/styles.md
+      - Event Handling: learn/concepts/events.md
+    - Tutorials:
+      - learn/tutorials/index.md
+      - Building a Menu: learn/tutorials/game-menu.md
+      - Creating an Inventory: learn/tutorials/inventory.md
+      - Theme Switching: learn/tutorials/theming.md
+  
+  # REFERENCE - Component Library (Chakra-style)
+  - Reference:
+    - reference/index.md
+    - Components:
+      - Overview: reference/components/index.md
+      - Layout:
+        - Node: reference/components/node.md
+        - ScrollView: reference/components/scrollview.md
+      - Forms:
+        - Button: reference/components/button.md
+        - TextInput: reference/components/textinput.md
+        - Checkbox: reference/components/checkbox.md
+        - Slider: reference/components/slider.md
+        - Select: reference/components/select.md
+        - ColorPicker: reference/components/colorpicker.md
+      - Data Display:
+        - Text: reference/components/text.md
+        - Image: reference/components/image.md
+        - ProgressBar: reference/components/progressbar.md
+      - Media:
+        - Video: reference/components/video.md
+        - Canvas: reference/components/canvas.md
+      - Navigation:
+        - Tabs: reference/components/tabs.md
+      - Interaction:
+        - Draggable: reference/components/draggable.md
+        - DropZone: reference/components/dropzone.md
+    - Styling:
+      - reference/styling/index.md
+      - Style Properties: reference/styling/properties.md
+      - Units: reference/styling/units.md
+      - Spacing: reference/styling/spacing.md
+      - Flexbox: reference/styling/flexbox.md
+      - Positioning: reference/styling/positioning.md
+    - Markup:
+      - reference/markup/index.md
+      - AUI Syntax: reference/markup/aui.md
+      - ACSS Styling: reference/markup/acss.md
+      - Global Styles: reference/markup/globals.md
+      - Custom Components: reference/markup/custom-components.md
+    - API:
+      - reference/api/index.md
+      - UIManager: reference/api/uimanager.md
+      - UIDebugger: reference/api/debugger.md
+      - Animations: reference/api/animations.md
+  
+  # RESOURCES - Examples & Tools
+  - Resources:
+    - resources/index.md
+    - Examples:
+      - Component Demo: resources/examples/components.md
+      - Drag & Drop: resources/examples/drag-drop.md
+      - Inventory System: resources/examples/inventory.md
+      - Markup Demo: resources/examples/markup.md
+    - Tools:
+      - UI Debugger: resources/tools/debugger.md
+      - Hot Reload: resources/tools/hot-reload.md
+  
+  # ABOUT
+  - About:
+    - about/index.md
+    - Contributing: about/contributing.md
+    - Changelog: about/changelog.md
+    - License: about/license.md

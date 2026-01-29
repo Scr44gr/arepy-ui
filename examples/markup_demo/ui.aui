@@ -1,0 +1,22 @@
+<container id="root" class="root">
+    <column class="panel flex-col gap-lg items-center">
+        <text class="title">AUI Markup Demo</text>
+        
+        <container class="counter-display">
+            <text id="counter-text" class="counter-value">Clicked: 0 times</text>
+        </container>
+        
+        <row class="flex-row gap-sm">
+            <button class="btn" on-click="increment">+ Add</button>
+            <button class="btn-secondary" on-click="decrement">- Sub</button>
+            <button class="btn-danger" on-click="reset">Reset</button>
+        </row>
+        
+        <container class="card flex-col gap-sm items-center">
+            <text class="subtitle">Theme Preview</text>
+            <text class="text-muted">Press F7 to toggle light/dark</text>
+        </container>
+        
+        <text class="footer">F3: Debugger | F7: Theme</text>
+    </column>
+</container>
