@@ -20,19 +20,10 @@ arepy-ui includes a set of ready-to-use UI components.
 | [Video](video.md) | Video playback (experimental) |
 | [ColorPicker](colorpicker.md) | HSV color selection |
 
-## Common Patterns
+Each reference page is generated from the implementation to keep signatures, attributes, and docstrings aligned with the code.
 
-All components inherit from `Node`, so they support:
+## Shared Base Type
 
-- **Children** - Add nested nodes
-- **Styles** - Apply layout and visual styles  
-- **Events** - Handle hover, click, etc.
+All components inherit from [Node](node.md), so layout, styling, and event-related behavior live there.
 
-```python
-# Components can have children
-button = Button("Save", on_click=save)
-button.add_child(Icon("save"))  # Add icon inside button
-
-# Components accept style overrides
-text = Text("Hello", style=Style(margin=Spacing.all(10)))
-```
+For usage patterns and runnable examples, use the guides in `learn/` and `resources/examples/`.

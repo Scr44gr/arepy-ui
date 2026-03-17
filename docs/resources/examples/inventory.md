@@ -3,8 +3,6 @@
 Complete grid-based inventory with drag and drop.
 
 <!-- TODO: Add inventory GIF -->
-![Inventory Demo](../../assets/examples/inventory-demo.gif)
-
 ## Overview
 
 A full inventory system with:

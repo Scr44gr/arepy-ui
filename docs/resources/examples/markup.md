@@ -3,8 +3,6 @@
 Using AUI/ACSS markup files.
 
 <!-- TODO: Add markup demo screenshot -->
-![Markup Demo](../../assets/examples/markup-demo.png)
-
 ## Overview
 
 This example shows how to build UI with declarative markup instead of Python code.

@@ -2,9 +2,6 @@
 
 Learn how to add light/dark mode to your game UI!
 
-<!-- TODO: Add theme switching GIF -->
-![Theme Switching](../../assets/theme-switch.gif)
-
 ## Overview
 
 arepy-ui supports CSS variables with theme variants, making it easy to switch between color schemes at runtime.

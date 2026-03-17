@@ -2,9 +2,6 @@
 
 Interactive demo showcasing all arepy-ui components.
 
-<!-- TODO: Add component demo GIF -->
-![Components Demo](../../assets/examples/components-demo.gif)
-
 ## Overview
 
 This example demonstrates all available components in action.

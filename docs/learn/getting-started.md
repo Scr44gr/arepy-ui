@@ -73,9 +73,6 @@ Run it:
 uv run main.py
 ```
 
-<!-- TODO: Add screenshot of hello world -->
-![Hello World](../assets/examples/hello-world.png)
-
 ## What's Next?
 
 <div class="grid cards" markdown>

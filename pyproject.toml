@@ -31,6 +31,7 @@ docs = [
     "mkdocs-glightbox",
     "mkdocs-git-revision-date-localized-plugin",
     "mkdocs-minify-plugin",
+    "mkdocstrings[python]>=0.28",
 ]
 markup = ["cython>=3.0"]
 

@@ -2,9 +2,6 @@
 
 Build a complete inventory system with drag and drop!
 
-<!-- TODO: Add inventory screenshot -->
-![Inventory System](../../assets/examples/inventory-demo.gif)
-
 ## What We'll Build
 
 - A grid-based inventory

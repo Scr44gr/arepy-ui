@@ -9,9 +9,6 @@ A simple main menu with:
 - Start and Quit buttons
 - A settings panel
 
-<!-- TODO: Add screenshot of final result -->
-![Final Menu](../../assets/examples/first-ui-result.png)
-
 ## Step 1: Setup
 
 First, create a new Python file:

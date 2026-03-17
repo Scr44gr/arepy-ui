@@ -119,19 +119,19 @@ UI library for [Arepy](https://github.com/Scr44gr/arepy) game engine. Build game
 
 | Component | Description |
 |-----------|-------------|
-| [`Text`](components/text.md) | Text rendering with custom fonts |
-| [`Button`](components/button.md) | Clickable button with hover states |
-| [`TextInput`](components/textinput.md) | Text field with cursor and selection |
-| [`Checkbox`](components/checkbox.md) | Toggle with label |
-| [`Slider`](components/slider.md) | Horizontal/vertical value slider |
-| [`Select`](components/select.md) | Dropdown menu |
-| [`Tabs`](components/tabs.md) | Tabbed container |
-| [`Image`](components/image.md) | Texture display with fit modes |
-| [`ScrollView`](components/scrollview.md) | Scrollable container |
-| [`ProgressBar`](components/progressbar.md) | Progress indicator |
-| [`Canvas`](components/canvas.md) | Custom drawing |
-| [`Video`](components/video.md) | Video playback |
-| [`ColorPicker`](components/colorpicker.md) | HSV color selection |
+| [`Text`](reference/components/text.md) | Text rendering with custom fonts |
+| [`Button`](reference/components/button.md) | Clickable button with hover states |
+| [`TextInput`](reference/components/textinput.md) | Text field with cursor and selection |
+| [`Checkbox`](reference/components/checkbox.md) | Toggle with label |
+| [`Slider`](reference/components/slider.md) | Horizontal or vertical value slider |
+| [`Select`](reference/components/select.md) | Dropdown menu |
+| [`Tabs`](reference/components/tabs.md) | Tabbed container |
+| [`Image`](reference/components/image.md) | Texture display with fit modes |
+| [`ScrollView`](reference/components/scrollview.md) | Scrollable container |
+| [`ProgressBar`](reference/components/progressbar.md) | Progress indicator |
+| [`Canvas`](reference/components/canvas.md) | Custom drawing |
+| [`Video`](reference/components/video.md) | Video playback |
+| [`ColorPicker`](reference/components/colorpicker.md) | HSV color selection |
 
 ## Layout System
 
@@ -173,17 +173,11 @@ from arepy_ui.markup import set_theme
 set_theme("light")
 ```
 
-<!-- TODO: Add theme switching GIF -->
-<p align="center">
-  <img src="assets/theme-switch.gif" alt="Theme switching" width="500">
-</p>
+Theme variants can be switched at runtime with `set_theme(...)` after loading global styles.
 
 ## UI Debugger
 
 Built-in visual debugger for inspecting layouts (press F3):
-
-<!-- TODO: Add debugger screenshot -->
-![UI Debugger](assets/debugger-overview.png)
 
 | Key | Action |
 |-----|--------|
@@ -192,27 +186,16 @@ Built-in visual debugger for inspecting layouts (press F3):
 | `F5` | Toggle padding visualization |
 | `F6` | Toggle component tree |
 
-[:octicons-arrow-right-24: Debugger Documentation](features/debugger.md)
+[:octicons-arrow-right-24: Debugger Documentation](resources/tools/debugger.md)
 
 ## Examples
 
-<!-- TODO: Add example GIFs -->
-<table>
-<tr>
-<td align="center">
-<img src="assets/examples/demo-components.gif" alt="Components" width="250"><br>
-<strong>Components</strong>
-</td>
-<td align="center">
-<img src="assets/examples/demo-drag.gif" alt="Drag & Drop" width="250"><br>
-<strong>Drag & Drop</strong>
-</td>
-<td align="center">
-<img src="assets/examples/demo-inventory.gif" alt="Inventory" width="250"><br>
-<strong>Inventory</strong>
-</td>
-</tr>
-</table>
+Examples available in the repository:
+
+- `uv run examples/demo_components.py`
+- `uv run examples/demo_drag.py`
+- `uv run examples/colorpicker_demo.py`
+- `uv run examples/demo_video.py`
 
 ```bash
 uv run examples/demo_components.py
@@ -230,7 +213,7 @@ uv run examples/colorpicker_demo.py
 
     Install arepy-ui with pip
 
-    [:octicons-arrow-right-24: Installation](getting-started/installation.md)
+    [:octicons-arrow-right-24: Installation](learn/getting-started.md)
 
 -   :material-rocket-launch:{ .lg .middle } **Quick Start**
 
@@ -238,7 +221,7 @@ uv run examples/colorpicker_demo.py
 
     Build your first UI in 5 minutes
 
-    [:octicons-arrow-right-24: Quick Start](getting-started/quickstart.md)
+    [:octicons-arrow-right-24: Quick Start](learn/getting-started.md)
 
 -   :material-puzzle:{ .lg .middle } **Components**
 
@@ -246,7 +229,7 @@ uv run examples/colorpicker_demo.py
 
     Explore available UI components
 
-    [:octicons-arrow-right-24: Components](components/index.md)
+    [:octicons-arrow-right-24: Components](reference/components/index.md)
 
 -   :material-file-document:{ .lg .middle } **AUI Markup**
 
@@ -254,6 +237,6 @@ uv run examples/colorpicker_demo.py
 
     Declarative UI with markup files
 
-    [:octicons-arrow-right-24: AUI Markup](features/markup.md)
+    [:octicons-arrow-right-24: AUI Markup](reference/markup/index.md)
 
 </div>

@@ -3,8 +3,6 @@
 Complete drag and drop implementation.
 
 <!-- TODO: Add drag drop GIF -->
-![Drag Drop Demo](../../assets/examples/drag-drop-demo.gif)
-
 ## Overview
 
 This example shows how to build a complete drag and drop system.

@@ -2,9 +2,6 @@
 
 Learn how to build a professional-looking game menu with arepy-ui.
 
-<!-- TODO: Add final result screenshot -->
-![Game Menu](../../assets/examples/game-menu-final.png)
-
 ## What We'll Build
 
 - Title screen with game logo

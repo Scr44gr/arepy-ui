@@ -1,191 +1,77 @@
 # API Reference
 
-Core classes and functions for arepy-ui.
+This section is the source-aligned reference for the API pages currently maintained in the docs.
 
-<div class="grid cards" markdown>
+## API Documents
 
--   :material-cogs:{ .lg .middle } **UIManager**
+- [docs/reference/api/index.md](index.md) - entry point and navigation notes for the API reference.
+- [docs/reference/api/uimanager.md](uimanager.md) - `UIManager`, `UIConfig`, and overlay helpers.
+- [docs/reference/api/debugger.md](debugger.md) - `UIDebugger` and debug-overlay behavior.
+- [docs/reference/api/animations.md](animations.md) - animation, timeline, and transition primitives.
 
-    ---
+## Source of Truth
 
-    The main UI controller class.
+These pages are backed by the library source through `mkdocstrings`, so signatures and docstrings come from the code instead of hand-maintained tables.
 
-    [:octicons-arrow-right-24: UIManager](uimanager.md)
-
--   :material-bug:{ .lg .middle } **UIDebugger**
-
-    ---
-
-    Visual debugging tools.
-
-    [:octicons-arrow-right-24: Debugger](debugger.md)
-
--   :material-animation:{ .lg .middle } **Animations**
-
-    ---
-
-    Transitions and keyframe animations.
-
-    [:octicons-arrow-right-24: Animations](animations.md)
-
-</div>
-
-## Quick Reference
-
-### Main Classes
-
-| Class | Description |
-|-------|-------------|
-| `UIManager` | Main UI controller |
-| `Node` | Base container element |
-| `Style` | Layout and appearance |
-| `Color` | RGBA color |
-| `Unit` | Size units (px, %) |
-| `Spacing` | Padding/margin |
-
-### Import Patterns
+## Common Imports
 
 ```python
-# Core imports
 from arepy_ui import (
-    UIManager,
-    Node,
-    Style,
+    AlignItems,
+    Animation,
+    Button,
     Color,
+    Easing,
+    FadeTransition,
+    FlexDirection,
+    JustifyContent,
+    KeyFrame,
+    Node,
+    ScrollView,
+    Spacing,
+    Style,
+    Text,
+    Timeline,
+    UIConfig,
+    UIManager,
     Unit,
 )
 
-# Components
-from arepy_ui import (
-    Text,
-    Button,
-    TextInput,
-    Checkbox,
-    Slider,
-    Select,
-    Image,
-    Video,
-    Canvas,
-    ProgressBar,
-    ScrollView,
-    Tabs,
-)
-
-# Types
-from arepy_ui import (
-    FlexDirection,
-    JustifyContent,
-    AlignItems,
-)
-
-# Styling
-from arepy_ui.core.style import Spacing
-
-# Markup
-from arepy_ui.markup import (
-    load_aui,
-    load_aui_string,
-    load_globals,
-    set_theme,
-    get_theme,
-)
-
-from arepy_ui import register_component
-
-# Animations
-from arepy_ui import (
-    Animation,
-    Easing,
-    Timeline,
-    KeyFrame,
-    FadeTransition,
-)
-
-# Drag & Drop
-from arepy_ui.components import (
-    Draggable,
-    DropZone,
-)
+from arepy_ui.markup import load_aui, load_aui_string, load_globals, get_theme, set_theme
 ```
 
-### Lifecycle
+## Minimal Lifecycle
 
 ```python
-from arepy import ArepyEngine, SystemPipeline
-from arepy_ui import UIManager, UIConfig
+from arepy import ArepyEngine, Display, Input, Renderer2D, SystemPipeline
+from arepy_ui import UIConfig, UIManager
 
-ui_manager: UIManager = None
+ui_manager: UIManager | None = None
 
-def setup(game: ArepyEngine):
+def setup(game: ArepyEngine) -> None:
     global ui_manager
     ui_manager = UIManager.from_engine(game, config=UIConfig())
     ui_manager.set_root(create_ui())
-    game.add_resource(ui_manager)
 
-def update(game: ArepyEngine):
-    ui_manager.update(game.get_delta_time())
+def ui_update_system(renderer: Renderer2D, input: Input, display: Display) -> None:
+    assert ui_manager is not None
+    ui_manager.update(renderer.get_delta_time())
 
-def draw():
+def ui_render_system(renderer: Renderer2D) -> None:
+    assert ui_manager is not None
     ui_manager.render()
 
-game = ArepyEngine(title="My Game", width=800, height=600)
+game = ArepyEngine(title="My UI", width=1280, height=720)
+game.on_startup = lambda: setup(game)
 world = game.create_world("main")
-world.add_startup_system(setup)
-world.add_system(SystemPipeline.UPDATE, update)
-world.add_system(SystemPipeline.RENDER, draw)
+world.add_system(SystemPipeline.UPDATE, ui_update_system)
+world.add_system(SystemPipeline.RENDER_UI, ui_render_system)
 game.set_current_world("main")
 game.run()
 ```
 
-### Error Handling
+## Related Sections
 
-```python
-from arepy_ui.markup import load_aui
-
-result = load_aui("menu.aui")
-if result.success and result.root is not None:
-    ui_manager.set_root(result.root)
-else:
-    for error in result.errors:
-        print(error)
-```
-
-## Type Enums
-
-### FlexDirection
-
-```python
-FlexDirection.ROW           # Left to right
-FlexDirection.COLUMN        # Top to bottom
-FlexDirection.ROW_REVERSE   # Right to left
-FlexDirection.COLUMN_REVERSE # Bottom to top
-```
-
-### JustifyContent
-
-```python
-JustifyContent.FLEX_START    # Start
-JustifyContent.FLEX_END      # End
-JustifyContent.CENTER        # Center
-JustifyContent.SPACE_BETWEEN # Even, no edge gap
-JustifyContent.SPACE_AROUND  # Even with edge gap
-JustifyContent.SPACE_EVENLY  # Equal everywhere
-```
-
-### AlignItems
-
-```python
-AlignItems.FLEX_START  # Top/Left
-AlignItems.FLEX_END    # Bottom/Right
-AlignItems.CENTER      # Center
-AlignItems.STRETCH     # Fill
-```
-
-### Markup Result
-
-```python
-result = load_aui("menu.aui", handlers={"start": on_start})
-
-if result.success and result.root is not None:
-    ui_manager.set_root(result.root)
-```
+- [reference/components/index.md](../components/index.md)
+- [reference/styling/index.md](../styling/index.md)
+- [reference/markup/index.md](../markup/index.md)
