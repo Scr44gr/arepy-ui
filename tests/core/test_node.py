@@ -518,6 +518,50 @@ class TestNodePropagatePositionToChildren:
         assert child.computed_x == 130
         assert child.computed_y == 140
 
+
+class TestNodeDirtyRelayoutRoot:
+    def test_relayout_root_defaults_to_parent_for_descendant_change(self):
+        root = Node(style=Style(width=Unit.px(400), height=Unit.px(300)))
+        container = Node(style=Style(width=Unit.px(200), height=Unit.px(100)))
+        child = Node(style=Style(width=Unit.px(50), height=Unit.px(20)))
+
+        root.add_child(container)
+        container.add_child(child)
+
+        assert child._get_relayout_root() is container
+
+    def test_relayout_root_climbs_through_auto_sized_ancestors(self):
+        root = Node(style=Style(width=Unit.px(400), height=Unit.px(300)))
+        auto_container = Node(
+            style=Style(
+                width=Unit.auto(),
+                height=Unit.px(100),
+                flex_direction=FlexDirection.ROW,
+            )
+        )
+        child = Node(style=Style(width=Unit.px(50), height=Unit.px(20)))
+
+        root.add_child(auto_container)
+        auto_container.add_child(child)
+
+        assert child._get_relayout_root() is root
+
+
+class TestNodeStyleBinding:
+    def test_node_binds_style_owner(self):
+        style = Style(width=Unit.px(100), height=Unit.px(50))
+        node = Node(style=style)
+
+        assert style._owner is node
+
+    def test_replacing_node_style_rebinds_owner(self):
+        node = Node()
+        new_style = Style(width=Unit.px(100))
+
+        node.style = new_style
+
+        assert new_style._owner is node
+
     def test_propagate_position_invisible_node(self):
         parent = Node(style=Style(width=Unit.px(200), height=Unit.px(200)))
         child = Node(style=Style(width=Unit.px(50), height=Unit.px(50), visible=False))
@@ -909,7 +953,8 @@ class TestNodeMarkDirty:
 
         node.mark_dirty()
 
-        mock_manager.mark_dirty.assert_called_once()
+        mock_manager.mark_dirty_node.assert_called_once_with(node)
+        mock_manager.mark_dirty.assert_not_called()
 
     def test_mark_dirty_propagates_to_parent(self):
         parent = Node()
@@ -921,7 +966,8 @@ class TestNodeMarkDirty:
 
         child.mark_dirty()
 
-        mock_manager.mark_dirty.assert_called()
+        mock_manager.mark_dirty_node.assert_called_once_with(parent)
+        mock_manager.mark_dirty.assert_not_called()
 
 
 class TestNodePropagateManager:

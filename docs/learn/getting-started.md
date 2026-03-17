@@ -16,7 +16,7 @@ uv add arepy-ui
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - [ArepyEngine](https://github.com/arepyui/arepy)
 
 ## Quick Start
@@ -70,7 +70,7 @@ game.run()
 Run it:
 
 ```bash
-python main.py
+uv run main.py
 ```
 
 <!-- TODO: Add screenshot of hello world -->
@@ -153,12 +153,15 @@ def setup(game: ArepyEngine):
     ui_manager = UIManager.from_engine(game, config=UIConfig())
     
     # Load from files
-    root = load_aui("menu.aui", context={
+    result = load_aui("menu.aui", handlers={
         "say_hello": say_hello,
     })
-    
-    ui_manager.set_root(root)
+
+    if result.success and result.root is not None:
+        ui_manager.set_root(result.root)
     game.add_resource(ui_manager)
 ```
+
+If parsing fails, inspect `result.errors` before replacing the current UI tree.
 
 [:octicons-arrow-right-24: Learn more about AUI Markup](../reference/markup/aui.md)

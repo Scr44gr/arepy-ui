@@ -85,3 +85,16 @@ class TestButton:
 
         # Font size is passed to text_node
         assert btn.text_node is not None
+
+    def test_button_style_merge_preserves_margin(self, mock_runtime):
+        from arepy_ui.components.button import Button
+        from arepy_ui.core.style import Spacing, Style
+
+        btn = Button(
+            text="Styled",
+            on_click=lambda: None,
+            style=Style(margin=Spacing.symmetric(6, 10)),
+        )
+
+        assert btn.style.margin.top.value == 6
+        assert btn.style.margin.left.value == 10

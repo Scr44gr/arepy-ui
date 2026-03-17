@@ -128,8 +128,8 @@ def on_drop(target: str, data: dict):
     # Rebuild UI
     create_ui()
 
-def update():
-    ui_manager.update()
+def update(game: ArepyEngine):
+    ui_manager.update(game.get_delta_time())
 
 def draw():
     ui_manager.render()

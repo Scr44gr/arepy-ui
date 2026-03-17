@@ -220,3 +220,24 @@ class TestTextArea:
 
         assert textarea.cursor_timer == 0.0
         assert textarea.show_cursor == True
+
+    def test_textarea_line_metrics_cache_reuses_measurements(self):
+        """Line metrics are computed once per line content."""
+        from arepy_ui.components.textarea import TextArea
+
+        textarea = TextArea()
+        textarea._lines = ["Hello"]
+        textarea.computed_x = 0
+        textarea.computed_y = 0
+        textarea.computed_width = 400
+        textarea.computed_height = 200
+
+        self.mock_renderer.measure_text.reset_mock()
+        self.mock_renderer.measure_text.side_effect = lambda text, size: len(text) * 10
+
+        first = textarea._get_column_at_x(0, 24, 0, self.mock_runtime)
+        second = textarea._get_column_at_x(0, 24, 0, self.mock_runtime)
+
+        assert first == 2
+        assert second == 2
+        assert self.mock_renderer.measure_text.call_count == len(textarea._lines[0])

@@ -5,15 +5,17 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from arepy_ui.components.input import TextInput
-from arepy_ui.core.types import Color, Unit
+from arepy_ui.core.types import Color, CursorType, Unit
 
 
 @pytest.fixture
 def mock_runtime():
     """Mock runtime for render/input tests."""
-    with patch("arepy_ui.components.input.get_runtime") as mock_get_runtime, \
-         patch("arepy_ui.core.fonts.get_runtime") as mock_fonts_get_runtime, \
-         patch("arepy_ui.core.fonts.get_font_manager") as mock_get_font_manager:
+    with (
+        patch("arepy_ui.components.input.get_runtime") as mock_get_runtime,
+        patch("arepy_ui.core.fonts.get_runtime") as mock_fonts_get_runtime,
+        patch("arepy_ui.core.fonts.get_font_manager") as mock_get_font_manager,
+    ):
         mock_rt = MagicMock()
         mock_renderer = MagicMock()
         mock_renderer.measure_text.return_value = 50
@@ -34,7 +36,12 @@ def mock_runtime():
         mock_font_manager.measure_text.return_value = 50
         mock_get_font_manager.return_value = mock_font_manager
 
-        yield {"runtime": mock_rt, "renderer": mock_renderer, "input": mock_input, "font_manager": mock_font_manager}
+        yield {
+            "runtime": mock_rt,
+            "renderer": mock_renderer,
+            "input": mock_input,
+            "font_manager": mock_font_manager,
+        }
 
 
 @pytest.fixture
@@ -86,6 +93,16 @@ class TestTextInput:
         assert input_field.is_focused == False
         input_field.is_focused = True
         assert input_field.is_focused == True
+
+    def test_textinput_custom_style_preserves_defaults(self):
+        from arepy_ui.core.style import Style
+
+        input_field = TextInput(style=Style(border_radius=10.0))
+
+        assert input_field.style.width.value == 200
+        assert input_field.style.height.value == 40
+        assert input_field.style.border_radius == 10.0
+        assert input_field.style.cursor == CursorType.IBEAM
 
 
 class TestTextInputSelection:
@@ -423,6 +440,23 @@ class TestTextInputEnsureCursorVisible:
         input_field._ensure_cursor_visible()
 
         assert input_field.text_offset_x == 0
+
+    def test_text_metrics_cache_reuses_prefix_measurements(self, mock_runtime):
+        input_field = TextInput()
+        input_field.value = "Hello"
+        input_field.computed_x = 0
+        input_field.computed_width = 200
+        input_field.computed_height = 40
+
+        with patch("arepy_ui.components.input.measure_text") as mock_measure_text:
+            mock_measure_text.side_effect = lambda text, size: len(text) * 10
+
+            first = input_field._get_char_position_at_x(36, mock_runtime["runtime"])
+            second = input_field._get_char_position_at_x(36, mock_runtime["runtime"])
+
+        assert first == 2
+        assert second == 2
+        assert mock_measure_text.call_count == len(input_field.value)
 
 
 class TestTextInputHandleKey:

@@ -1,8 +1,15 @@
 """Tests para arepy_ui.core.style"""
 
+from unittest.mock import MagicMock
+
 import pytest
 
-from arepy_ui.core.style import Spacing, Style
+from arepy_ui.core.style import (
+    Spacing,
+    Style,
+    merge_non_default_style_fields,
+    merge_style_fields,
+)
 from arepy_ui.core.types import (
     AlignItems,
     Color,
@@ -106,3 +113,53 @@ class TestStyle:
         assert style.max_width.value == 500  # type: ignore
         assert style.min_height.value == 20  # type: ignore
         assert style.max_height.value == 200  # type: ignore
+
+    def test_style_marks_owner_dirty_on_layout_change(self):
+        owner = MagicMock()
+        style = Style()
+        style._bind_owner(owner)
+
+        style.width = Unit.px(120)
+
+        owner.mark_dirty.assert_called_once()
+
+    def test_style_does_not_mark_owner_dirty_on_appearance_change(self):
+        owner = MagicMock()
+        style = Style()
+        style._bind_owner(owner)
+
+        style.background_color = Color(255, 0, 0, 255)
+
+        owner.mark_dirty.assert_not_called()
+
+    def test_spacing_mutation_marks_owner_dirty(self):
+        owner = MagicMock()
+        style = Style()
+        style._bind_owner(owner)
+
+        style.padding.left = Unit.px(12)
+
+        owner.mark_dirty.assert_called_once()
+
+    def test_merge_style_fields_clones_spacing(self):
+        base = Style()
+        override = Style(padding=Spacing.symmetric(4, 8))
+
+        merge_style_fields(base, override, ("padding",))
+
+        assert base.padding.left.value == 8
+        assert base.padding is not override.padding
+
+    def test_merge_non_default_style_fields_preserves_base_defaults(self):
+        base = Style(width=Unit.px(200), height=Unit.px(40))
+        override = Style(border_radius=8.0)
+
+        merge_non_default_style_fields(
+            base,
+            override,
+            ("width", "height", "border_radius"),
+        )
+
+        assert base.width.value == 200
+        assert base.height.value == 40
+        assert base.border_radius == 8.0

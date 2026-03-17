@@ -13,7 +13,6 @@ from arepy import ArepyEngine, SystemPipeline
 from arepy_ui import UIManager, UIConfig
 from arepy_ui.markup import load_aui, load_globals
 from pathlib import Path
-import time
 
 ui_manager: UIManager = None
 last_modified = {}
@@ -33,11 +32,15 @@ def setup(game: ArepyEngine):
 def reload_ui():
     """Reload UI from files."""
     try:
-        root = load_aui("assets/ui/menu.aui", context={
+        result = load_aui("assets/ui/menu.aui", handlers={
             "start_game": lambda: print("Start!"),
         })
-        ui_manager.set_root(root)
-        print("UI reloaded!")
+        if result.success and result.root is not None:
+            ui_manager.set_root(result.root)
+            print("UI reloaded!")
+        else:
+            for error in result.errors:
+                print(error)
     except Exception as e:
         print(f"Reload failed: {e}")
 
@@ -53,12 +56,12 @@ def check_for_changes():
             pass
     return False
 
-def update():
+def update(game: ArepyEngine):
     # Check every frame (or throttle for performance)
     if check_for_changes():
         reload_ui()
     
-    ui_manager.update()
+    ui_manager.update(game.get_delta_time())
 
 def draw():
     ui_manager.render()
@@ -71,6 +74,8 @@ world.add_system(SystemPipeline.RENDER, draw)
 game.set_current_world("main")
 game.run()
 ```
+
+`load_aui()` returns a `ParseResult`, so hot reload should only replace the root when parsing succeeds.
 
 ## Using Watchdog
 

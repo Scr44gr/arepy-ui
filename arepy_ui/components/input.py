@@ -1,3 +1,4 @@
+from bisect import bisect_left
 from typing import Callable, Optional
 
 from arepy.engine.input import Key
@@ -6,7 +7,7 @@ from arepy.math import check_collision_point_rec
 
 from ..core.fonts import draw_text, measure_text
 from ..core.node import Node
-from ..core.style import Spacing, Style
+from ..core.style import Spacing, Style, merge_non_default_style_fields
 from ..core.types import AlignItems, Color, CursorType, Unit
 from ..runtime import MouseButton, get_runtime
 
@@ -52,9 +53,36 @@ class TextInput(Node):
             cursor=CursorType.IBEAM,
         )
 
-        super().__init__(style=style or default_style, **kwargs)
+        merge_non_default_style_fields(
+            default_style,
+            style,
+            (
+                "width",
+                "height",
+                "min_width",
+                "max_width",
+                "min_height",
+                "max_height",
+                "margin",
+                "padding",
+                "align_items",
+                "position",
+                "top",
+                "left",
+                "right",
+                "bottom",
+                "visible",
+                "opacity",
+                "background_color",
+                "border_color",
+                "border_width",
+                "border_radius",
+                "cursor",
+            ),
+        )
 
-        self.value = value
+        super().__init__(style=default_style, **kwargs)
+
         self.placeholder = placeholder
         self.on_change = on_change
         self.on_submit = on_submit
@@ -65,6 +93,12 @@ class TextInput(Node):
         self.selection_color = Color(0, 121, 241, 100)
         self.focused_border_color = Color(0, 121, 241, 255)
         self.default_border_color = Color(130, 130, 130, 255)
+
+        self._value = ""
+        self._cached_metrics_value: Optional[str] = None
+        self._cached_metrics_font_size: Optional[float] = None
+        self._prefix_widths = [0.0]
+        self._midpoint_widths = []
 
         # Cursor position (0 = before first char, len(value) = after last char)
         self.cursor_pos = 0
@@ -85,6 +119,45 @@ class TextInput(Node):
 
         # Key repeat state
         self._key_states = {}
+
+        self.value = value
+
+    @property
+    def value(self) -> str:
+        return self._value
+
+    @value.setter
+    def value(self, text: str):
+        self._value = text
+        self._invalidate_text_metrics()
+
+    def _invalidate_text_metrics(self):
+        self._cached_metrics_value = None
+        self._cached_metrics_font_size = None
+
+    def _ensure_text_metrics(self):
+        if (
+            self._cached_metrics_value == self._value
+            and self._cached_metrics_font_size == self.font_size
+        ):
+            return
+
+        prefix_widths = [0.0]
+        midpoint_widths = []
+        for index in range(len(self._value)):
+            next_width = measure_text(self._value[: index + 1], self.font_size)
+            prefix_widths.append(next_width)
+            midpoint_widths.append((prefix_widths[index] + next_width) / 2)
+
+        self._prefix_widths = prefix_widths
+        self._midpoint_widths = midpoint_widths
+        self._cached_metrics_value = self._value
+        self._cached_metrics_font_size = self.font_size
+
+    def _get_prefix_width(self, position: int) -> float:
+        self._ensure_text_metrics()
+        clamped = max(0, min(position, len(self._value)))
+        return self._prefix_widths[clamped]
 
     def _clear_selection(self):
         """Clear text selection."""
@@ -310,17 +383,8 @@ class TextInput(Node):
         if relative_x <= 0:
             return 0
 
-        # Find the character position
-        for i in range(len(self.value) + 1):
-            text_width = measure_text(self.value[:i], self.font_size)
-            if i < len(self.value):
-                char_width = measure_text(self.value[i], self.font_size)
-                if relative_x < text_width + char_width / 2:
-                    return i
-            else:
-                if relative_x <= text_width:
-                    return i
-        return len(self.value)
+        self._ensure_text_metrics()
+        return min(bisect_left(self._midpoint_widths, relative_x), len(self._value))
 
     def handle_input(self, mouse_pos, is_click, wheel_scroll: float = 0.0) -> bool:
         if not self.style.visible:
@@ -413,10 +477,9 @@ class TextInput(Node):
 
     def _ensure_cursor_visible(self):
         """Scroll to keep cursor visible."""
-        runtime = get_runtime()
         _, _, content_w, _ = self._get_content_area()
 
-        cursor_x = measure_text(self.value[: self.cursor_pos], int(self.font_size))
+        cursor_x = self._get_prefix_width(self.cursor_pos)
 
         # Scroll left if cursor is before visible area
         if cursor_x < self.text_offset_x:
@@ -498,8 +561,8 @@ class TextInput(Node):
         sel = self._get_selection_range()
         if sel and self.value:
             start, end = sel
-            sel_start_x = measure_text(self.value[:start], int(self.font_size))
-            sel_end_x = measure_text(self.value[:end], int(self.font_size))
+            sel_start_x = self._get_prefix_width(start)
+            sel_end_x = self._get_prefix_width(end)
 
             runtime.renderer.draw_rectangle(
                 Rect(
@@ -529,9 +592,7 @@ class TextInput(Node):
                 self.show_cursor = not self.show_cursor
 
             if self.show_cursor:
-                cursor_x = measure_text(
-                    self.value[: self.cursor_pos], int(self.font_size)
-                )
+                cursor_x = self._get_prefix_width(self.cursor_pos)
                 runtime.renderer.draw_rectangle(
                     Rect(
                         int(content_x + cursor_x - self.text_offset_x),

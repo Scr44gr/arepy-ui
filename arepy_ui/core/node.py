@@ -26,7 +26,7 @@ class Node:
         id: Optional[str] = None,
     ):
         self.id = id
-        self.style = style or Style()
+        self._style = Style()
         self.children: List["Node"] = children or []
         self.parent: Optional["Node"] = None
         self._manager = None  # Reference to UIManager
@@ -50,13 +50,47 @@ class Node:
         self.pickable: bool = (
             True  # If False, input passes through (unless children consume it)
         )
+        self._layout_viewport_size: Optional[tuple[float, float]] = None
+        self._last_layout_request: Optional[tuple[float, float, float, float]] = None
+        self.style = style or Style()
+
+    @property
+    def style(self) -> Style:
+        return self._style
+
+    @style.setter
+    def style(self, value: Style):
+        self._style = value
+        self._style._bind_owner(self)
+        if hasattr(self, "computed_width"):
+            self.mark_dirty()
 
     def mark_dirty(self):
         """Mark the UI as dirty to trigger re-layout."""
         if self._manager:
-            self._manager.mark_dirty()
+            if hasattr(self._manager, "mark_dirty_node"):
+                self._manager.mark_dirty_node(self._get_relayout_root())
+            else:
+                self._manager.mark_dirty()
         elif self.parent:
             self.parent.mark_dirty()
+
+    def is_ancestor_of(self, node: Optional["Node"]) -> bool:
+        current = node
+        while current is not None:
+            if current is self:
+                return True
+            current = current.parent
+        return False
+
+    def _get_relayout_root(self) -> "Node":
+        candidate = self.parent or self
+        while candidate.parent is not None and (
+            candidate.style.width.type == UnitType.AUTO
+            or candidate.style.height.type == UnitType.AUTO
+        ):
+            candidate = candidate.parent
+        return candidate
 
     def add_child(self, child: "Node"):
         child.parent = self
@@ -102,11 +136,16 @@ class Node:
         """
         Simplified layout calculation.
         """
+        self._last_layout_request = (parent_x, parent_y, parent_width, parent_height)
+
         # Optimization: If not visible, skip layout
         if not self.style.visible:
             self.computed_width = 0
             self.computed_height = 0
             return
+
+        if self.parent is None:
+            self._layout_viewport_size = None
 
         # 1. Calculate own dimensions
         self.computed_width = self._resolve_unit(self.style.width, parent_width)
@@ -198,6 +237,7 @@ class Node:
         flex_children = []  # Only non-absolute children
 
         for child in self.children:
+            child._layout_viewport_size = self._layout_viewport_size
             # Recursive layout with available space
             child.calculate_layout(current_x, current_y, content_width, content_height)
 
@@ -367,6 +407,7 @@ class Node:
                     child.computed_y = node.computed_y + margin_top
 
                 if child.children:
+                    child._layout_viewport_size = node._layout_viewport_size
                     self._propagate_position_to_children(child)
                 continue
 
@@ -427,7 +468,14 @@ class Node:
                 current_x += child.computed_width + node.style.gap
 
             if child.children:
+                child._layout_viewport_size = node._layout_viewport_size
                 self._propagate_position_to_children(child)
+
+    def _get_layout_viewport_size(self, refresh: bool = False) -> tuple[float, float]:
+        if refresh or self._layout_viewport_size is None:
+            width, height = get_runtime().display.get_window_size()
+            self._layout_viewport_size = (float(width), float(height))
+        return self._layout_viewport_size
 
     def _resolve_unit(self, unit: Unit, parent_value: float) -> float:
         if unit.type == UnitType.PIXEL:
@@ -435,10 +483,10 @@ class Node:
         elif unit.type == UnitType.PERCENT:
             return parent_value * (unit.value / 100.0)
         elif unit.type == UnitType.VIEWPORT_WIDTH:
-            width, _ = get_runtime().display.get_window_size()
+            width, _ = self._get_layout_viewport_size()
             return width * (unit.value / 100.0)
         elif unit.type == UnitType.VIEWPORT_HEIGHT:
-            _, height = get_runtime().display.get_window_size()
+            _, height = self._get_layout_viewport_size()
             return height * (unit.value / 100.0)
         elif unit.type == UnitType.AUTO:
             # For auto, we usually default to 0 or content size.

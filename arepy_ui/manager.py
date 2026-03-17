@@ -1,13 +1,17 @@
 import os
 from typing import TYPE_CHECKING, Callable, List, Optional
 
+from arepy import TextureFilter
+from arepy.engine.input import Key
+
+from .components.scroll import ScrollView
 from .config import ResizeMode, ScaleTransform, UIConfig, calculate_scale_transform
 from .core.animation import Animator
 from .core.fonts import get_font_manager
 from .core.node import Node
 from .core.types import Color, CursorType, Vector2
+from .debug import UIDebugger
 from .runtime import MouseButton, configure_runtime, get_runtime
-from arepy import TextureFilter
 
 if TYPE_CHECKING:
     from arepy import ArepyEngine
@@ -46,6 +50,7 @@ class UIManager:
         self.screen_width = width
         self.screen_height = height
         self.is_dirty = True
+        self._dirty_layout_root: Optional[Node] = None
         self.is_input_captured = False
 
         # Scale transform for non-responsive modes
@@ -80,7 +85,10 @@ class UIManager:
         # This value is used by `set_font_scale` to scale nodes that expose a `font_size`.
         self._font_scale: float = 1.0
 
-
+        # Integrated debugger
+        self.debugger = UIDebugger()
+        self.debugger.enabled = self.config.debug_enabled
+        self._sync_debugger_hotkey_labels()
 
     @classmethod
     def from_engine(
@@ -223,9 +231,70 @@ class UIManager:
                 # Continue despite failures on particular children
                 pass
 
+    def get_debugger(self) -> UIDebugger:
+        """Return the integrated UI debugger instance."""
+        return self.debugger
+
+    def enable_debug_overlay(self, enabled: bool = True) -> None:
+        self.debugger.enabled = enabled
+        self.config.debug_enabled = enabled
+
+    def toggle_debug_overlay(self) -> None:
+        self.debugger.toggle()
+        self.config.debug_enabled = self.debugger.enabled
+
+    def set_debug_toggle_key(self, key: Optional[Key]) -> None:
+        self.config.debug_toggle_key = key
+        self._sync_debugger_hotkey_labels()
+
+    def set_debug_hotkeys(
+        self,
+        toggle: Optional[Key] = None,
+        bounds: Optional[Key] = None,
+        padding: Optional[Key] = None,
+        tree: Optional[Key] = None,
+    ) -> None:
+        self.config.debug_toggle_key = toggle
+        self.config.debug_bounds_key = bounds
+        self.config.debug_padding_key = padding
+        self.config.debug_tree_key = tree
+        self._sync_debugger_hotkey_labels()
+
+    def _format_debug_key_label(self, key: Optional[Key]) -> str:
+        return getattr(key, "name", "OFF") if key is not None else "OFF"
+
+    def _sync_debugger_hotkey_labels(self) -> None:
+        self.debugger.set_hotkey_labels(
+            toggle=self._format_debug_key_label(self.config.debug_toggle_key),
+            bounds=self._format_debug_key_label(self.config.debug_bounds_key),
+            padding=self._format_debug_key_label(self.config.debug_padding_key),
+            tree=self._format_debug_key_label(self.config.debug_tree_key),
+        )
+
+    def _handle_debug_shortcuts(self, runtime) -> None:
+        toggle_key = self.config.debug_toggle_key
+        if toggle_key is not None and runtime.input.is_key_pressed(toggle_key):
+            self.toggle_debug_overlay()
+
+        if not self.debugger.enabled:
+            return
+
+        bounds_key = self.config.debug_bounds_key
+        if bounds_key is not None and runtime.input.is_key_pressed(bounds_key):
+            self.debugger.toggle_bounds()
+
+        padding_key = self.config.debug_padding_key
+        if padding_key is not None and runtime.input.is_key_pressed(padding_key):
+            self.debugger.toggle_padding()
+
+        tree_key = self.config.debug_tree_key
+        if tree_key is not None and runtime.input.is_key_pressed(tree_key):
+            self.debugger.toggle_tree()
+
     def set_root(self, node: Node):
         self.root = node
         self.is_dirty = True
+        self._dirty_layout_root = node
         if self.root:
             self._propagate_manager(self.root)
             # Calculate layout immediately to avoid 1-frame glitch
@@ -269,6 +338,48 @@ class UIManager:
 
     def mark_dirty(self):
         self.is_dirty = True
+        self._dirty_layout_root = self.root
+
+    def _find_common_ancestor(self, first: Node, second: Node) -> Optional[Node]:
+        ancestors = set()
+        current: Optional[Node] = first
+        while current is not None:
+            ancestors.add(current)
+            current = current.parent
+
+        current = second
+        while current is not None:
+            if current in ancestors:
+                return current
+            current = current.parent
+        return None
+
+    def mark_dirty_node(self, node: Optional[Node]):
+        self.is_dirty = True
+
+        if self.root is None:
+            self._dirty_layout_root = None
+            return
+
+        if node is None:
+            self._dirty_layout_root = self.root
+            return
+
+        if self._dirty_layout_root is None:
+            self._dirty_layout_root = node
+            return
+
+        current_root = self._dirty_layout_root
+        if current_root is self.root or node is self.root:
+            self._dirty_layout_root = self.root
+        elif current_root.is_ancestor_of(node):
+            return
+        elif node.is_ancestor_of(current_root):
+            self._dirty_layout_root = node
+        else:
+            self._dirty_layout_root = (
+                self._find_common_ancestor(current_root, node) or self.root
+            )
 
     def update(self, dt: float, wheel_scroll: float = 0.0):
         # Clear overlays from previous frame
@@ -279,6 +390,7 @@ class UIManager:
 
         # Handle Input
         runtime = get_runtime()
+        self._handle_debug_shortcuts(runtime)
 
         # Get mouse position, converting from screen to UI coords if needed
         raw_mx, raw_my = runtime.input.get_mouse_position()
@@ -393,6 +505,7 @@ class UIManager:
         if self.config.resize_mode == ResizeMode.RESPONSIVE:
             # Responsive: just recalculate layout with new size
             self.is_dirty = True
+            self._dirty_layout_root = self.root
         else:
             # Scale modes: calculate transform
             self.scale_transform = calculate_scale_transform(
@@ -405,6 +518,7 @@ class UIManager:
             # For FIXED mode, we don't need to recalculate layout
             if self.config.resize_mode != ResizeMode.FIXED:
                 self.is_dirty = True
+                self._dirty_layout_root = self.root
 
     def _recalculate_layout(self):
         """Recalculate UI layout."""
@@ -424,8 +538,18 @@ class UIManager:
             layout_w = float(self.config.reference_width or self.screen_width)
             layout_h = float(self.config.reference_height or self.screen_height)
 
-        self.root.calculate_layout(0, 0, layout_w, layout_h)
+        layout_root = self._dirty_layout_root or self.root
+        if layout_root is self.root:
+            self.root.calculate_layout(0, 0, layout_w, layout_h)
+        else:
+            layout_request = layout_root._last_layout_request
+            if layout_request is None:
+                self.root.calculate_layout(0, 0, layout_w, layout_h)
+            else:
+                layout_root.calculate_layout(*layout_request)
+
         self.is_dirty = False
+        self._dirty_layout_root = None
 
         # Call after callback
         if self.config.on_after_layout:
@@ -453,6 +577,9 @@ class UIManager:
 
         # Render tooltip (always on top)
         self._render_tooltip()
+
+        # Render debugger overlay last
+        self.debugger.render(self.root)
 
     def get_reference_size(self) -> tuple[int, int]:
         """Get the reference resolution used for layout."""
@@ -508,7 +635,6 @@ class UIManager:
 
         # Adjust mouse coords for ScrollView children
         child_mx, child_my = mx, my
-        from .components.scroll import ScrollView
 
         if isinstance(node, ScrollView):
             child_my = my - node.scroll_y

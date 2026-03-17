@@ -156,8 +156,8 @@ def on_select_change(value):
     select_value = value
     print(f"Selected: {value}")
 
-def update():
-    ui_manager.update()
+def update(game: ArepyEngine):
+    ui_manager.update(game.get_delta_time())
 
 def draw():
     ui_manager.render()

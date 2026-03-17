@@ -25,3 +25,7 @@ arepy-ui is released under the [MIT License](license.md).
 ## Contributing
 
 We welcome contributions! See our [Contributing Guide](contributing.md) for details.
+
+## Improvement Plan
+
+See the [project roadmap](roadmap.md) for the current documentation alignment, performance, and architecture priorities.

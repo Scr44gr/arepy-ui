@@ -72,13 +72,10 @@ from arepy_ui import (
 )
 
 # Types
-from arepy_ui.core.types import (
+from arepy_ui import (
     FlexDirection,
     JustifyContent,
     AlignItems,
-    AlignSelf,
-    FlexWrap,
-    Overflow,
 )
 
 # Styling
@@ -87,19 +84,21 @@ from arepy_ui.core.style import Spacing
 # Markup
 from arepy_ui.markup import (
     load_aui,
-    load_acss,
+    load_aui_string,
     load_globals,
     set_theme,
     get_theme,
-    register_component,
 )
 
+from arepy_ui import register_component
+
 # Animations
-from arepy_ui.core.animation import (
+from arepy_ui import (
     Animation,
-    Transition,
     Easing,
-    Keyframe,
+    Timeline,
+    KeyFrame,
+    FadeTransition,
 )
 
 # Drag & Drop
@@ -123,8 +122,8 @@ def setup(game: ArepyEngine):
     ui_manager.set_root(create_ui())
     game.add_resource(ui_manager)
 
-def update():
-    ui_manager.update()
+def update(game: ArepyEngine):
+    ui_manager.update(game.get_delta_time())
 
 def draw():
     ui_manager.render()
@@ -143,12 +142,12 @@ game.run()
 ```python
 from arepy_ui.markup import load_aui
 
-try:
-    root = load_aui("menu.aui")
-except FileNotFoundError:
-    print("AUI file not found")
-except SyntaxError as e:
-    print(f"AUI parse error: {e}")
+result = load_aui("menu.aui")
+if result.success and result.root is not None:
+    ui_manager.set_root(result.root)
+else:
+    for error in result.errors:
+        print(error)
 ```
 
 ## Type Enums
@@ -182,10 +181,11 @@ AlignItems.CENTER      # Center
 AlignItems.STRETCH     # Fill
 ```
 
-### Overflow
+### Markup Result
 
 ```python
-Overflow.VISIBLE  # Show overflow
-Overflow.HIDDEN   # Clip overflow
-Overflow.SCROLL   # Scrollable
+result = load_aui("menu.aui", handlers={"start": on_start})
+
+if result.success and result.root is not None:
+    ui_manager.set_root(result.root)
 ```

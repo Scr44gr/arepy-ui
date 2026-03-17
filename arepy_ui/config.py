@@ -3,6 +3,7 @@ from enum import Enum, auto
 from typing import Callable, Optional, Tuple, List
 
 from arepy import TextureFilter
+from arepy.engine.input import Key
 
 
 class ResizeMode(Enum):
@@ -65,6 +66,13 @@ class UIConfig:
     # Debounce layout recalculation (ms) - helps with rapid resize
     layout_debounce_ms: float = 0.0
 
+    # === Debug Overlay ===
+    debug_enabled: bool = False
+    debug_toggle_key: Optional[Key] = Key.F3
+    debug_bounds_key: Optional[Key] = Key.F4
+    debug_padding_key: Optional[Key] = Key.F5
+    debug_tree_key: Optional[Key] = Key.F6
+
     # === Callbacks ===
     # Called when window is resized: (new_width, new_height)
     on_resize: Optional[Callable[[int, int], None]] = None
@@ -116,17 +124,24 @@ class ScaleTransform:
 # === Font texture filter change notification helpers ===
 _font_texture_filter_listeners: List[Callable[[TextureFilter], None]] = []
 
-def register_font_texture_filter_listener(listener: Callable[[TextureFilter], None]) -> None:
+
+def register_font_texture_filter_listener(
+    listener: Callable[[TextureFilter], None],
+) -> None:
     """Register a listener to be called when UIConfig.font_texture_filter changes."""
     if listener not in _font_texture_filter_listeners:
         _font_texture_filter_listeners.append(listener)
 
-def unregister_font_texture_filter_listener(listener: Callable[[TextureFilter], None]) -> None:
+
+def unregister_font_texture_filter_listener(
+    listener: Callable[[TextureFilter], None],
+) -> None:
     """Unregister a previously registered listener."""
     try:
         _font_texture_filter_listeners.remove(listener)
     except ValueError:
         pass
+
 
 def notify_font_texture_filter_change(filter: TextureFilter) -> None:
     """Notify listeners and attempt to apply the filter to loaded fonts.
@@ -152,8 +167,14 @@ def notify_font_texture_filter_change(filter: TextureFilter) -> None:
             runtime = get_runtime()
             for font_info in fm._fonts.values():
                 try:
-                    tmp_tex = ArepyTexture(-1, size=(font_info.base_size, font_info.base_size))
-                    tmp_tex._ref_texture = getattr(getattr(font_info.font, "_ref_font", font_info.font), "texture", None)
+                    tmp_tex = ArepyTexture(
+                        -1, size=(font_info.base_size, font_info.base_size)
+                    )
+                    tmp_tex._ref_texture = getattr(
+                        getattr(font_info.font, "_ref_font", font_info.font),
+                        "texture",
+                        None,
+                    )
                     if tmp_tex._ref_texture is not None:
                         runtime.renderer.set_texture_filter(tmp_tex, filter)
                 except Exception:

@@ -5,13 +5,23 @@ Load and use custom TrueType fonts.
 ## Loading Fonts
 
 ```python
-from arepy_ui import load_font
+from arepy_ui import load_font, load_fonts, unload_font, FontLoadRequest
 
 # Load a font
 load_font("pixel", "assets/fonts/pixel.ttf", base_size=32)
 
 # Load and set as default
 load_font("main", "assets/fonts/main.ttf", base_size=32, set_as_default=True)
+
+# Load a score font with only the glyphs the HUD needs
+load_font("score", "assets/fonts/score.ttf", base_size=24, glyphs="SCORE: 0123456789")
+
+# Load multiple fonts efficiently at startup
+load_fonts([
+    FontLoadRequest("title", "assets/fonts/title.ttf", base_size=48),
+    FontLoadRequest("body", "assets/fonts/body.ttf", base_size=24, set_as_default=True),
+    FontLoadRequest("mono", "assets/fonts/mono.ttf", base_size=16),
+])
 ```
 
 ### Parameters
@@ -86,11 +96,16 @@ draw_text_centered("Title", x=400, y=50, size=24, color=Color(255, 255, 255))
 ### Multiple Fonts
 
 ```python
+from arepy_ui import FontLoadRequest, load_fonts
+
+
 # Load fonts at startup
 def setup(game):
-    load_font("title", "fonts/title.ttf", base_size=48)
-    load_font("body", "fonts/body.ttf", base_size=24, set_as_default=True)
-    load_font("mono", "fonts/mono.ttf", base_size=16)
+    load_fonts([
+        FontLoadRequest("title", "fonts/title.ttf", base_size=48),
+        FontLoadRequest("body", "fonts/body.ttf", base_size=24, set_as_default=True),
+        FontLoadRequest("mono", "fonts/mono.ttf", base_size=16),
+    ])
 
 # Use in UI
 Node(children=[
@@ -99,6 +114,38 @@ Node(children=[
     Text("Code: print('hello')", font_size=14, font_name="mono"),
 ])
 ```
+
+`load_fonts()` is more startup-friendly than calling `load_font()` repeatedly because it reuses the same runtime lookup and invalidates the text measurement cache only once after the batch completes.
+
+## Glyph Subsets
+
+If a font is only used for HUD counters, labels, or a restricted alphabet, load a subset instead of the full ASCII set:
+
+```python
+from arepy_ui import load_font
+
+load_font(
+    "score",
+    "fonts/score.ttf",
+    base_size=24,
+    glyphs="SCORE: 0123456789",
+)
+```
+
+This reduces the amount of glyph data the renderer has to build and can improve startup time and memory use when loading many fonts.
+
+## Unloading Fonts
+
+Free fonts when a scene no longer needs them:
+
+```python
+from arepy_ui import unload_font, unload_fonts
+
+unload_font("score")
+unload_fonts(["title", "body", "mono"])
+```
+
+This is useful for scene transitions, development hot reload, and memory-sensitive games.
 
 ### Pixel Font for Retro Look
 

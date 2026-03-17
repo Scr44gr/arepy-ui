@@ -107,7 +107,12 @@ UI library for [Arepy](https://github.com/Scr44gr/arepy) game engine. Build game
 
     handlers = {"greet": lambda: print("Clicked!")}
     result = load_aui("ui.aui", handlers=handlers)
-    ui_manager.set_root(result.root)
+
+    if result.success and result.root is not None:
+        ui_manager.set_root(result.root)
+    else:
+        for error in result.errors:
+            print(error)
     ```
 
 ## Components

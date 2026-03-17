@@ -188,6 +188,7 @@ nav:
   # ABOUT
   - About:
     - about/index.md
+    - Roadmap: about/roadmap.md
     - Contributing: about/contributing.md
     - Changelog: about/changelog.md
     - License: about/license.md

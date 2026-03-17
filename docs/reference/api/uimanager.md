@@ -42,8 +42,8 @@ ui_manager.set_root(root_node)
 Process input and update UI state. Call once per frame.
 
 ```python
-def update():
-    ui_manager.update()
+def update(game: ArepyEngine):
+    ui_manager.update(game.get_delta_time())
 ```
 
 ### render
@@ -156,8 +156,8 @@ def on_click():
         root = ui_manager.root.find_by_id("root")
         print("Button clicked!")
 
-def update():
-    ui_manager.update()
+def update(game: ArepyEngine):
+    ui_manager.update(game.get_delta_time())
 
 def draw():
     ui_manager.render()
@@ -202,13 +202,17 @@ def setup(game: ArepyEngine):
     ui_manager = UIManager.from_engine(game, config=UIConfig())
     
     # Load from markup
-    root = load_aui("menu.aui", context={
+    result = load_aui("menu.aui", handlers={
         "start_game": start_game,
         "open_settings": open_settings,
     })
-    ui_manager.set_root(root)
+    if result.success and result.root is not None:
+        ui_manager.set_root(result.root)
     game.add_resource(ui_manager)
 ```
+
+!!! note "ParseResult"
+    `load_aui()` returns a `ParseResult`, not a raw `Node`. Check `result.success`, inspect `result.errors`, and use `result.root` when parsing succeeds.
 
 ## Tips
 

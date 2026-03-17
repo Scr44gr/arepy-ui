@@ -273,14 +273,13 @@ menu.acss  ← Styles (auto-loaded)
 Or load explicitly:
 
 ```python
-from arepy_ui.markup import load_aui, load_acss
+from arepy_ui.markup import load_aui
 
 # Auto-loads menu.acss
-root = load_aui("menu.aui")
+result = load_aui("menu.aui")
 
-# Or load separately
-styles = load_acss("custom-styles.acss")
-root = load_aui("menu.aui", styles=styles)
+# Or point to an explicit stylesheet file
+result = load_aui("menu.aui", stylesheet="custom-styles.acss")
 ```
 
 ## Complete Example

@@ -98,7 +98,7 @@ before-build = "pip install cython>=3.0"
 before-build = "pip install cython>=3.0"
 
 [tool.uv.sources]
-arepy = { git = "https://github.com/Scr44gr/arepy", rev = "main" }
+arepy = { git = "https://github.com/Scr44gr/arepy", rev = "40f8a4bcbdc16e6ce8af0e8232e340eff7237bf6" }
 
 [tool.ty.environment]
 root = ["./"]

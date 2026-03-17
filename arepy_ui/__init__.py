@@ -15,14 +15,18 @@ from .config import ResizeMode, ScaleAnchor, ScaleTransform, UIConfig
 from .core.animation import Animation, Animator, Easing
 from .core.fonts import (
     FontManager,
+    FontLoadRequest,
     TextMetrics,
     draw_text,
     draw_text_centered,
     get_font,
     get_font_manager,
     load_font,
+    load_fonts,
     measure_text,
     measure_text_ex,
+    unload_font,
+    unload_fonts,
 )
 from .core.node import Node
 from .core.style import Spacing, Style
@@ -84,9 +88,13 @@ __all__ = [
     "TransitionState",
     # Fonts
     "FontManager",
+    "FontLoadRequest",
     "TextMetrics",
     "get_font_manager",
     "load_font",
+    "load_fonts",
+    "unload_font",
+    "unload_fonts",
     "get_font",
     "draw_text",
     "draw_text_centered",

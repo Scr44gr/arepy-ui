@@ -409,20 +409,16 @@ class ListView(Node, Generic[T]):
         content_w = self.computed_width - padding_x * 2 - self.scrollbar_width - 4
         content_h = self.computed_height - padding_y * 2
 
-        # Scissor for content
-        runtime.renderer.begin_scissor_mode(
-            int(content_x),
-            int(content_y),
-            int(content_w + self.scrollbar_width + 4),
-            int(content_h),
-        )
-
         # Draw visible items (virtualization)
         first_visible, last_visible = self._get_visible_range()
+        content_bottom = content_y + content_h
 
         for i in range(first_visible, last_visible):
             item = self.items[i]
             item_y = content_y + i * self.item_height - self.scroll_y
+
+            if item_y + self.item_height <= content_y or item_y >= content_bottom:
+                continue
 
             # Item background
             is_selected = i in self._selected_indices
@@ -490,8 +486,6 @@ class ListView(Node, Generic[T]):
                 ),
                 self.scrollbar_thumb_color,
             )
-
-        runtime.renderer.end_scissor_mode()
 
         # Render children
         for child in self.children:

@@ -5,7 +5,7 @@ requires-python = ">=3.11"
 [[package]]
 name = "arepy"
 version = "0.4.8"
-source = { git = "https://github.com/Scr44gr/arepy?rev=main#de63a9fce83573cf6574352bc4425c73ddfaa222" }
+source = { git = "https://github.com/Scr44gr/arepy?rev=40f8a4bcbdc16e6ce8af0e8232e340eff7237bf6#40f8a4bcbdc16e6ce8af0e8232e340eff7237bf6" }
 dependencies = [
     { name = "bitarray" },
     { name = "raylib" },
@@ -41,7 +41,7 @@ markup = [
 
 [package.metadata]
 requires-dist = [
-    { name = "arepy", git = "https://github.com/Scr44gr/arepy?rev=main" },
+    { name = "arepy", git = "https://github.com/Scr44gr/arepy?rev=40f8a4bcbdc16e6ce8af0e8232e340eff7237bf6" },
     { name = "av", marker = "extra == 'full'", specifier = "==16.0.1" },
     { name = "cython", marker = "extra == 'dev'", specifier = ">=3.0" },
     { name = "cython", marker = "extra == 'markup'", specifier = ">=3.0" },

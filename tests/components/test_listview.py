@@ -167,6 +167,25 @@ class TestListView:
         # Should not raise
         listview.render()
 
+    def test_listview_render_does_not_open_nested_scissor(self):
+        """ListView relies on item culling instead of nested scissor clipping."""
+        from arepy_ui.components.listview import ListItem, ListView
+
+        items = [
+            ListItem(label="Item 1", value="v1"),
+            ListItem(label="Item 2", value="v2"),
+        ]
+        listview = ListView(items=items)
+        listview.computed_x = 0
+        listview.computed_y = 0
+        listview.computed_width = 200
+        listview.computed_height = 100
+
+        listview.render()
+
+        self.mock_renderer.begin_scissor_mode.assert_not_called()
+        self.mock_renderer.end_scissor_mode.assert_not_called()
+
     def test_listview_with_custom_size(self):
         """Test ListView with custom dimensions."""
         from arepy_ui.components.listview import ListView

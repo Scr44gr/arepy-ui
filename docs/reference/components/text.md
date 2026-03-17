@@ -64,10 +64,13 @@ Text(
 First load the font, then use it by name:
 
 ```python
-from arepy_ui import load_font, Text
+from arepy_ui import FontLoadRequest, load_fonts, Text
 
-# Load font once at startup
-load_font("pixel", "assets/fonts/pixel.ttf", base_size=32)
+# Load one or more fonts once at startup
+load_fonts([
+    FontLoadRequest("pixel", "assets/fonts/pixel.ttf", base_size=32),
+    FontLoadRequest("score", "assets/fonts/score.ttf", base_size=24, glyphs="SCORE: 0123456789"),
+])
 
 # Use in text
 Text("Pixel text", size=16, font_name="pixel")
