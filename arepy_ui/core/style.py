@@ -159,6 +159,9 @@ def clone_spacing(spacing: Spacing) -> Spacing:
     )
 
 
+_DEFAULT_STYLE_REFERENCE = Style()
+
+
 def merge_style_fields(
     base_style: Style, override_style: Optional[Style], fields: Iterable[str]
 ) -> Style:
@@ -183,7 +186,7 @@ def merge_non_default_style_fields(
     if override_style is None:
         return base_style
 
-    reference_style = default_style or Style()
+    reference_style = default_style or _DEFAULT_STYLE_REFERENCE
 
     for field_name in fields:
         value = getattr(override_style, field_name)

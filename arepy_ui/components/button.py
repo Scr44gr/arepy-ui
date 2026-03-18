@@ -10,6 +10,9 @@ from ..runtime import MOUSE_BUTTON_LEFT, get_runtime
 from .text import Text
 
 
+_BUTTON_MERGE_FIELDS = ("margin", "position", "top", "left")
+
+
 class Button(Node):
     def __init__(
         self,
@@ -39,11 +42,8 @@ class Button(Node):
             cursor=CursorType.POINTING_HAND,
         )
 
-        merge_style_fields(
-            default_style,
-            style,
-            ("margin", "position", "top", "left"),
-        )
+        if style is not None:
+            merge_style_fields(default_style, style, _BUTTON_MERGE_FIELDS)
 
         super().__init__(style=default_style, **kwargs)
 
@@ -57,7 +57,8 @@ class Button(Node):
             font_name=font_name,
         )
         self.text_node.pickable = False  # Text should not block button click
-        self.add_child(self.text_node)
+        self.text_node.parent = self
+        self.children.append(self.text_node)
 
         # Button states
         self.base_color = bg_color

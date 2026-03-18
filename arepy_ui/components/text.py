@@ -6,6 +6,29 @@ from ..core.style import Style, merge_non_default_style_fields
 from ..core.types import Color, Unit
 
 
+_TEXT_STYLE_FIELDS = (
+    "margin",
+    "padding",
+    "position",
+    "top",
+    "left",
+    "right",
+    "bottom",
+    "visible",
+    "opacity",
+    "background_color",
+    "border_color",
+    "border_width",
+    "border_radius",
+    "cursor",
+    "text_color",
+    "font_size",
+)
+
+
+_TEXT_DEFAULT_STYLE = Style()
+
+
 class Text(Node):
     """Text node with cached measurement and custom font support."""
 
@@ -18,28 +41,15 @@ class Text(Node):
         font_name: Optional[str] = None,
         **kwargs,
     ):
-        merged_style = merge_non_default_style_fields(
-            Style(),
-            style,
-            (
-                "margin",
-                "padding",
-                "position",
-                "top",
-                "left",
-                "right",
-                "bottom",
-                "visible",
-                "opacity",
-                "background_color",
-                "border_color",
-                "border_width",
-                "border_radius",
-                "cursor",
-                "text_color",
-                "font_size",
-            ),
-        )
+        if style is None:
+            merged_style = Style()
+        else:
+            merged_style = merge_non_default_style_fields(
+                Style(),
+                style,
+                _TEXT_STYLE_FIELDS,
+                default_style=_TEXT_DEFAULT_STYLE,
+            )
         super().__init__(style=merged_style, **kwargs)
         self._text = text
         self.font_size = size
