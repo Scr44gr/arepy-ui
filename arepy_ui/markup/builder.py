@@ -4,6 +4,7 @@ Component builder for converting AUI nodes to arepy-ui components.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence
 
 from arepy_ui.core.style import Style
@@ -61,8 +62,34 @@ _STYLE_CONVERTERS: Dict[str, Callable[[Any], Any]] = {
     "z_index": convert_to_int,
 }
 
-_RESOLVED_STYLE_CACHE: Dict[tuple[object, ...], Dict[str, Any]] = {}
-_INTERACTION_COLOR_CACHE: Dict[tuple[object, ...], Dict[str, Any]] = {}
+_MAX_RESOLVED_STYLE_CACHE_ENTRIES = 256
+_MAX_INTERACTION_COLOR_CACHE_ENTRIES = 256
+
+_RESOLVED_STYLE_CACHE: OrderedDict[tuple[object, ...], Dict[str, Any]] = OrderedDict()
+_INTERACTION_COLOR_CACHE: OrderedDict[tuple[object, ...], Dict[str, Any]] = OrderedDict()
+
+
+def _cache_get(
+    cache: OrderedDict[tuple[object, ...], Dict[str, Any]],
+    key: tuple[object, ...],
+) -> Optional[Dict[str, Any]]:
+    value = cache.get(key)
+    if value is None:
+        return None
+    cache.move_to_end(key)
+    return value
+
+
+def _cache_put(
+    cache: OrderedDict[tuple[object, ...], Dict[str, Any]],
+    key: tuple[object, ...],
+    value: Dict[str, Any],
+    max_entries: int,
+) -> None:
+    cache[key] = value
+    cache.move_to_end(key)
+    if len(cache) > max_entries:
+        cache.popitem(last=False)
 
 
 def _clear_builder_caches() -> None:
@@ -175,7 +202,7 @@ def _resolve_interaction_colors(
     cache_key = _build_interaction_cache_key(
         node, stylesheet, class_names, element_id, globals_version
     )
-    cached = _INTERACTION_COLOR_CACHE.get(cache_key)
+    cached = _cache_get(_INTERACTION_COLOR_CACHE, cache_key)
     if cached is not None:
         return cached.copy()
 
@@ -202,14 +229,17 @@ def _resolve_interaction_colors(
         element_id=element_id,
     )
     if "background" in active_styles or "background-color" in active_styles:
-        bg = active_styles.get("background") or active_styles.get(
-            "background-color"
-        )
+        bg = active_styles.get("background") or active_styles.get("background-color")
         pressed_color = convert_to_color(bg)
         if pressed_color:
             kwargs["pressed_color"] = pressed_color
 
-    _INTERACTION_COLOR_CACHE[cache_key] = kwargs.copy()
+    _cache_put(
+        _INTERACTION_COLOR_CACHE,
+        cache_key,
+        kwargs.copy(),
+        _MAX_INTERACTION_COLOR_CACHE_ENTRIES,
+    )
     return kwargs
 
 
@@ -250,7 +280,7 @@ def resolve_styles(
         element_id,
         globals_registry.version,
     )
-    cached = _RESOLVED_STYLE_CACHE.get(cache_key)
+    cached = _cache_get(_RESOLVED_STYLE_CACHE, cache_key)
     if cached is not None:
         return cached.copy()
 
@@ -319,7 +349,12 @@ def resolve_styles(
     elif node.tag == "column":
         style_dict.setdefault("flex_direction", FlexDirection.COLUMN)
 
-    _RESOLVED_STYLE_CACHE[cache_key] = style_dict.copy()
+    _cache_put(
+        _RESOLVED_STYLE_CACHE,
+        cache_key,
+        style_dict.copy(),
+        _MAX_RESOLVED_STYLE_CACHE_ENTRIES,
+    )
     return style_dict
 
 

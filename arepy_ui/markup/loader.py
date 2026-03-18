@@ -4,6 +4,7 @@ AUI Loader - Main API for loading AUI markup files.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 import os
 import re
@@ -39,9 +40,28 @@ class _ACSSFileCacheEntry:
     stylesheet: StyleSheet
 
 
-_AUI_FILE_CACHE: Dict[str, _AUIFileCacheEntry] = {}
-_ACSS_FILE_CACHE: Dict[str, _ACSSFileCacheEntry] = {}
-_INLINE_STYLESHEET_CACHE: Dict[str, StyleSheet] = {}
+_MAX_AUI_FILE_CACHE_ENTRIES = 64
+_MAX_ACSS_FILE_CACHE_ENTRIES = 64
+_MAX_INLINE_STYLESHEET_CACHE_ENTRIES = 64
+
+_AUI_FILE_CACHE: OrderedDict[str, _AUIFileCacheEntry] = OrderedDict()
+_ACSS_FILE_CACHE: OrderedDict[str, _ACSSFileCacheEntry] = OrderedDict()
+_INLINE_STYLESHEET_CACHE: OrderedDict[str, StyleSheet] = OrderedDict()
+
+
+def _cache_get[K, V](cache: OrderedDict[K, V], key: K) -> Optional[V]:
+    value = cache.get(key)
+    if value is None:
+        return None
+    cache.move_to_end(key)
+    return value
+
+
+def _cache_put[K, V](cache: OrderedDict[K, V], key: K, value: V, max_entries: int) -> None:
+    cache[key] = value
+    cache.move_to_end(key)
+    if len(cache) > max_entries:
+        cache.popitem(last=False)
 
 
 def _normalize_path(path: str) -> str:
@@ -58,7 +78,7 @@ def _clear_load_caches() -> None:
 def _load_cached_aui_file(path: str) -> tuple[AUINode | None, list[str]]:
     normalized_path = _normalize_path(path)
     stat = os.stat(normalized_path)
-    cached = _AUI_FILE_CACHE.get(normalized_path)
+    cached = _cache_get(_AUI_FILE_CACHE, normalized_path)
     if (
         cached is not None
         and cached.mtime_ns == stat.st_mtime_ns
@@ -67,11 +87,16 @@ def _load_cached_aui_file(path: str) -> tuple[AUINode | None, list[str]]:
         return cached.root_node, list(cached.parser_errors)
 
     root_node, parser_errors = parse_aui_file(normalized_path)
-    _AUI_FILE_CACHE[normalized_path] = _AUIFileCacheEntry(
-        mtime_ns=stat.st_mtime_ns,
-        size=stat.st_size,
-        root_node=root_node,
-        parser_errors=tuple(parser_errors),
+    _cache_put(
+        _AUI_FILE_CACHE,
+        normalized_path,
+        _AUIFileCacheEntry(
+            mtime_ns=stat.st_mtime_ns,
+            size=stat.st_size,
+            root_node=root_node,
+            parser_errors=tuple(parser_errors),
+        ),
+        _MAX_AUI_FILE_CACHE_ENTRIES,
     )
     return root_node, list(parser_errors)
 
@@ -79,7 +104,7 @@ def _load_cached_aui_file(path: str) -> tuple[AUINode | None, list[str]]:
 def _load_cached_acss_file(path: str) -> StyleSheet:
     normalized_path = _normalize_path(path)
     stat = os.stat(normalized_path)
-    cached = _ACSS_FILE_CACHE.get(normalized_path)
+    cached = _cache_get(_ACSS_FILE_CACHE, normalized_path)
     if (
         cached is not None
         and cached.mtime_ns == stat.st_mtime_ns
@@ -88,21 +113,31 @@ def _load_cached_acss_file(path: str) -> StyleSheet:
         return cached.stylesheet
 
     stylesheet = parse_acss_file(normalized_path)
-    _ACSS_FILE_CACHE[normalized_path] = _ACSSFileCacheEntry(
-        mtime_ns=stat.st_mtime_ns,
-        size=stat.st_size,
-        stylesheet=stylesheet,
+    _cache_put(
+        _ACSS_FILE_CACHE,
+        normalized_path,
+        _ACSSFileCacheEntry(
+            mtime_ns=stat.st_mtime_ns,
+            size=stat.st_size,
+            stylesheet=stylesheet,
+        ),
+        _MAX_ACSS_FILE_CACHE_ENTRIES,
     )
     return stylesheet
 
 
 def _load_cached_inline_stylesheet(content: str) -> StyleSheet:
-    cached = _INLINE_STYLESHEET_CACHE.get(content)
+    cached = _cache_get(_INLINE_STYLESHEET_CACHE, content)
     if cached is not None:
         return cached
 
     stylesheet = parse_acss(content)
-    _INLINE_STYLESHEET_CACHE[content] = stylesheet
+    _cache_put(
+        _INLINE_STYLESHEET_CACHE,
+        content,
+        stylesheet,
+        _MAX_INLINE_STYLESHEET_CACHE_ENTRIES,
+    )
     return stylesheet
 
 

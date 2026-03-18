@@ -328,6 +328,7 @@ class GlobalStyleRegistry:
         self._variables.clear()
         self._cache.clear()
         self._dirty = False
+        self._version += 1
 
 
 _registry: Optional[GlobalStyleRegistry] = None

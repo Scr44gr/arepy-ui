@@ -3,7 +3,13 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from arepy_ui.markup.loader import _clear_load_caches, load_aui, load_aui_string
+from arepy_ui.markup.loader import (
+    _AUI_FILE_CACHE,
+    _INLINE_STYLESHEET_CACHE,
+    _clear_load_caches,
+    load_aui,
+    load_aui_string,
+)
 
 
 class TestLoaderCaching:
@@ -15,7 +21,9 @@ class TestLoaderCaching:
 
     @patch("arepy_ui.markup.loader._get_components", return_value={})
     @patch("arepy_ui.markup.loader.build_component", return_value=object())
-    def test_load_aui_reuses_parsed_file_cache(self, _mock_build, _mock_components, tmp_path):
+    def test_load_aui_reuses_parsed_file_cache(
+        self, _mock_build, _mock_components, tmp_path
+    ):
         aui_path = tmp_path / "ui.aui"
         acss_path = tmp_path / "ui.acss"
         aui_path.write_text("<text>Hello</text>", encoding="utf-8")
@@ -68,11 +76,59 @@ class TestLoaderCaching:
                 "arepy_ui.markup.loader.parse_acss",
                 side_effect=lambda content: {"content": content},
             ) as mock_parse_acss:
-                with patch(
-                    "arepy_ui.markup.loader.build_component",
-                    return_value=object(),
-                ), patch("arepy_ui.markup.loader._get_components", return_value={}):
+                with (
+                    patch(
+                        "arepy_ui.markup.loader.build_component",
+                        return_value=object(),
+                    ),
+                    patch("arepy_ui.markup.loader._get_components", return_value={}),
+                ):
                     load_aui_string("<text>Hello</text>", ".title { color: #fff; }")
                     load_aui_string("<text>Hello</text>", ".title { color: #fff; }")
 
         assert mock_parse_acss.call_count == 1
+
+    @patch("arepy_ui.markup.loader._get_components", return_value={})
+    @patch("arepy_ui.markup.loader.build_component", return_value=object())
+    def test_load_aui_file_cache_uses_lru_bound(
+        self, _mock_build, _mock_components, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr("arepy_ui.markup.loader._MAX_AUI_FILE_CACHE_ENTRIES", 2)
+
+        paths = []
+        for index in range(3):
+            path = tmp_path / f"{index}.aui"
+            path.write_text("<text>Hello</text>", encoding="utf-8")
+            paths.append(path)
+
+        with patch(
+            "arepy_ui.markup.loader.parse_aui_file",
+            return_value=(object(), []),
+        ):
+            for path in paths:
+                load_aui(str(path), stylesheet=None)
+
+        assert len(_AUI_FILE_CACHE) == 2
+
+    def test_inline_stylesheet_cache_uses_lru_bound(self, monkeypatch):
+        monkeypatch.setattr(
+            "arepy_ui.markup.loader._MAX_INLINE_STYLESHEET_CACHE_ENTRIES", 2
+        )
+
+        with patch("arepy_ui.markup.loader.parse_aui", return_value=(object(), [])):
+            with patch(
+                "arepy_ui.markup.loader.parse_acss",
+                side_effect=lambda content: {"content": content},
+            ):
+                with (
+                    patch(
+                        "arepy_ui.markup.loader.build_component",
+                        return_value=object(),
+                    ),
+                    patch("arepy_ui.markup.loader._get_components", return_value={}),
+                ):
+                    load_aui_string("<text>Hello</text>", ".a { color: #111; }")
+                    load_aui_string("<text>Hello</text>", ".b { color: #222; }")
+                    load_aui_string("<text>Hello</text>", ".c { color: #333; }")
+
+        assert len(_INLINE_STYLESHEET_CACHE) == 2

@@ -10,6 +10,8 @@ from arepy_ui.components.text import Text
 from arepy_ui.core.node import Node
 from arepy_ui.core.types import Unit, UnitType
 from arepy_ui.markup.builder import (
+    _RESOLVED_STYLE_CACHE,
+    _MAX_RESOLVED_STYLE_CACHE_ENTRIES,
     _STYLE_CONVERTERS,
     _clear_builder_caches,
     _convert_style_value,
@@ -115,8 +117,8 @@ class TestResolveStyles:
         # Builder converts to Unit objects
         assert styles is not None
         assert isinstance(styles.get("width"), Unit)
-        assert styles.get("width").type == UnitType.PERCENT # type: ignore
-        assert styles.get("width").value == 100.0 # type: ignore
+        assert styles.get("width").type == UnitType.PERCENT  # type: ignore
+        assert styles.get("width").value == 100.0  # type: ignore
 
     def test_resolve_styles_with_class(self):
         aui_content = '<container class="wrapper"></container>'
@@ -199,6 +201,43 @@ class TestResolveStyles:
         light_styles = resolve_styles(root, None)
 
         assert dark_styles["text_color"] != light_styles["text_color"]
+
+    def test_resolve_styles_cache_invalidates_on_clear_globals(self):
+        load_globals_string(
+            """
+            .headline { color: #112233; }
+            """
+        )
+        root, _ = parse_aui('<text class="headline">Hello</text>')
+        assert root is not None
+
+        styled = resolve_styles(root, None)
+        clear_globals()
+        reset = resolve_styles(root, None)
+
+        assert styled.get("text_color") is not None
+        assert reset.get("text_color") is None
+
+    def test_resolved_style_cache_uses_lru_bound(self, monkeypatch):
+        monkeypatch.setattr("arepy_ui.markup.builder._MAX_RESOLVED_STYLE_CACHE_ENTRIES", 2)
+
+        stylesheet = parse_acss(
+            """
+            .card-1 { width: 10px; }
+            .card-2 { width: 20px; }
+            .card-3 { width: 30px; }
+            """
+        )
+        roots = []
+        for name in ("card-1", "card-2", "card-3"):
+            root, _ = parse_aui(f'<container class="{name}"></container>')
+            assert root is not None
+            roots.append(root)
+
+        for root in roots:
+            resolve_styles(root, stylesheet)
+
+        assert len(_RESOLVED_STYLE_CACHE) == 2
 
 
 class TestBuildComponent:
@@ -314,7 +353,7 @@ class TestBuildComponent:
         root, _ = parse_aui(aui_content)
         stylesheet = parse_acss(css_content)
         assert root is not None
-        component = build_component(root, stylesheet, handlers, COMPONENTS) # type: ignore
+        component = build_component(root, stylesheet, handlers, COMPONENTS)  # type: ignore
         assert component is not None
 
         assert component.on_click is not None
@@ -552,7 +591,7 @@ class TestApplyTagAttributes:
         root, _ = parse_aui(aui_content)
         assert root is not None
         component = build_component(root, None, {}, components)
-        assert component.options == ["a", "b", "c"] # type: ignore
+        assert component.options == ["a", "b", "c"]  # type: ignore
 
     def test_input_attributes(self):
         from arepy_ui.components.input import TextInput
@@ -563,7 +602,7 @@ class TestApplyTagAttributes:
         assert root is not None
         component = build_component(root, None, {}, components)
 
-        assert component.placeholder == "Enter name" # type: ignore
+        assert component.placeholder == "Enter name"  # type: ignore
 
     @patch("arepy_ui.core.fonts.get_font_manager")
     def test_button_with_handler(self, mock_fm):
@@ -580,7 +619,7 @@ class TestApplyTagAttributes:
         component = build_component(root, None, handlers, COMPONENTS)
 
         assert component is not None
-        component.on_click() # type: ignore
+        component.on_click()  # type: ignore
         assert len(clicked) == 1
 
     def test_slider_with_on_change_handler(self):
@@ -595,5 +634,5 @@ class TestApplyTagAttributes:
         assert root is not None
 
         component = build_component(root, None, handlers, components)
-        component.on_change(50) # type: ignore
+        component.on_change(50)  # type: ignore
         assert values == [50]
