@@ -29,7 +29,7 @@ from arepy_ui.core.node import Node
 from arepy_ui.core.fonts import TextMetrics
 from arepy_ui.markup.builder import _clear_builder_caches
 from arepy_ui.markup.globals import clear_globals
-from arepy_ui.markup.loader import _clear_load_caches, load_aui
+from arepy_ui.markup.loader import _clear_load_caches, load_aui, load_aui_string
 
 COMPONENTS = {
     "Node": Node,
@@ -104,22 +104,60 @@ def _benchmark_load(aui_path: Path, rounds: int) -> tuple[float, float]:
     return statistics.mean(cold_timings), statistics.mean(hot_timings)
 
 
+def _benchmark_load_string(aui_path: Path, acss_path: Path, rounds: int) -> tuple[float, float]:
+    cold_timings = []
+    hot_timings = []
+    content = aui_path.read_text(encoding="utf-8")
+    stylesheet = acss_path.read_text(encoding="utf-8")
+
+    with patch("arepy_ui.markup.loader._get_components", return_value=COMPONENTS):
+        with patch("arepy_ui.core.fonts.get_font_manager") as mock_font_manager:
+            mock_font_manager.return_value.measure_text_ex.return_value = TextMetrics(
+                100, 20, 24
+            )
+
+            for _ in range(rounds):
+                clear_globals()
+                _clear_builder_caches()
+                _clear_load_caches()
+                start = time.perf_counter()
+                result = load_aui_string(content, stylesheet)
+                cold_timings.append(time.perf_counter() - start)
+                if result.root is None:
+                    raise RuntimeError("cold string benchmark build failed")
+
+            for _ in range(rounds):
+                start = time.perf_counter()
+                result = load_aui_string(content, stylesheet)
+                hot_timings.append(time.perf_counter() - start)
+                if result.root is None:
+                    raise RuntimeError("hot string benchmark build failed")
+
+    return statistics.mean(cold_timings), statistics.mean(hot_timings)
+
+
 def main() -> None:
     item_count = 300
     rounds = 10
     tmp_dir = Path(__file__).resolve().parent / ".bench_tmp"
     tmp_dir.mkdir(exist_ok=True)
-    aui_path, _acss_path = _write_fixture_files(tmp_dir, item_count)
+    aui_path, acss_path = _write_fixture_files(tmp_dir, item_count)
 
     cold_mean, hot_mean = _benchmark_load(aui_path, rounds)
+    cold_string_mean, hot_string_mean = _benchmark_load_string(
+        aui_path, acss_path, rounds
+    )
     node_count = item_count * 3 + 1
 
     print(f"items: {item_count}")
     print(f"approx_nodes: {node_count}")
     print(f"rounds: {rounds}")
-    print(f"cold_mean_ms: {cold_mean * 1000:.3f}")
-    print(f"hot_mean_ms: {hot_mean * 1000:.3f}")
-    print(f"speedup_x: {cold_mean / hot_mean:.2f}")
+    print(f"file_cold_mean_ms: {cold_mean * 1000:.3f}")
+    print(f"file_hot_mean_ms: {hot_mean * 1000:.3f}")
+    print(f"file_speedup_x: {cold_mean / hot_mean:.2f}")
+    print(f"string_cold_mean_ms: {cold_string_mean * 1000:.3f}")
+    print(f"string_hot_mean_ms: {hot_string_mean * 1000:.3f}")
+    print(f"string_speedup_x: {cold_string_mean / hot_string_mean:.2f}")
 
 
 if __name__ == "__main__":

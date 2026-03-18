@@ -67,7 +67,7 @@ _STYLE_CONVERTERS: Dict[str, Callable[[Any], Any]] = {
 _MAX_RESOLVED_STYLE_CACHE_ENTRIES = 256
 _MAX_INTERACTION_COLOR_CACHE_ENTRIES = 256
 _MAX_TAG_ATTRIBUTE_PLAN_CACHE_ENTRIES = 256
-_MAX_COMPILED_NODE_PLAN_CACHE_ENTRIES = 512
+_MAX_COMPILED_NODE_PLAN_CACHE_ENTRIES = 1024
 
 
 @dataclass(slots=True)
@@ -80,10 +80,10 @@ class _TagAttributePlan:
 @dataclass(slots=True)
 class _CompiledNodePlan:
     node: AUINode
-    tag: str
     component_name: Optional[str]
     child_plans: tuple["_CompiledNodePlan", ...]
-    line_number: Optional[int]
+    is_known_tag: bool
+    is_scroll: bool
 
 
 _RESOLVED_STYLE_CACHE: OrderedDict[tuple[object, ...], Dict[str, Any]] = OrderedDict()
@@ -358,6 +358,7 @@ def _get_tag_attribute_plan(node: AUINode) -> _TagAttributePlan:
 def _compile_node_plan_uncached(node: AUINode) -> _CompiledNodePlan:
     tag = node.tag
     component_name = TAG_TO_COMPONENT.get(tag)
+    is_known_tag = tag in TAG_TO_COMPONENT
 
     if tag == "scroll":
         child_plans = tuple(_compile_node_plan(child) for child in node.children)
@@ -372,10 +373,10 @@ def _compile_node_plan_uncached(node: AUINode) -> _CompiledNodePlan:
 
     return _CompiledNodePlan(
         node=node,
-        tag=tag,
         component_name=component_name,
         child_plans=child_plans,
-        line_number=getattr(node, "line_number", None),
+        is_known_tag=is_known_tag,
+        is_scroll=tag == "scroll",
     )
 
 
@@ -668,14 +669,15 @@ def _build_component_from_plan(
     components: Dict[str, type],
     errors: ErrorCollector,
 ) -> Optional[Node]:
-    tag = plan.tag
     node = plan.node
+    tag = node.tag
+    line_number = getattr(node, "line_number", None)
 
-    if tag not in TAG_TO_COMPONENT:
+    if not plan.is_known_tag:
         errors.warning(
             f"Unknown tag '{tag}' will be ignored",
             tag=tag,
-            line=plan.line_number,
+            line=line_number,
         )
         return None
 
@@ -688,7 +690,7 @@ def _build_component_from_plan(
         errors.warning(
             f"Component '{component_name}' not available",
             tag=tag,
-            line=plan.line_number,
+            line=line_number,
         )
         return None
 
@@ -712,7 +714,7 @@ def _build_component_from_plan(
         stylesheet,
     )
 
-    if tag == "scroll":
+    if plan.is_scroll:
         from arepy_ui.core.node import Node as CoreNode
         from arepy_ui.core.types import Unit
 
@@ -749,7 +751,7 @@ def _build_component_from_plan(
             errors.error(
                 f"Failed to create ScrollView: {e}",
                 tag=tag,
-                line=plan.line_number,
+                line=line_number,
             )
             return None
 
@@ -762,7 +764,7 @@ def _build_component_from_plan(
         errors.error(
             f"Failed to create {component_name}: {e}",
             tag=tag,
-            line=plan.line_number,
+            line=line_number,
         )
         return None
 

@@ -40,12 +40,20 @@ class _ACSSFileCacheEntry:
     stylesheet: StyleSheet
 
 
+@dataclass(slots=True)
+class _AUIStringCacheEntry:
+    root_node: AUINode | None
+    parser_errors: tuple[str, ...]
+
+
 _MAX_AUI_FILE_CACHE_ENTRIES = 64
 _MAX_ACSS_FILE_CACHE_ENTRIES = 64
+_MAX_AUI_STRING_CACHE_ENTRIES = 64
 _MAX_INLINE_STYLESHEET_CACHE_ENTRIES = 64
 
 _AUI_FILE_CACHE: OrderedDict[str, _AUIFileCacheEntry] = OrderedDict()
 _ACSS_FILE_CACHE: OrderedDict[str, _ACSSFileCacheEntry] = OrderedDict()
+_AUI_STRING_CACHE: OrderedDict[str, _AUIStringCacheEntry] = OrderedDict()
 _INLINE_STYLESHEET_CACHE: OrderedDict[str, StyleSheet] = OrderedDict()
 
 
@@ -57,7 +65,9 @@ def _cache_get[K, V](cache: OrderedDict[K, V], key: K) -> Optional[V]:
     return value
 
 
-def _cache_put[K, V](cache: OrderedDict[K, V], key: K, value: V, max_entries: int) -> None:
+def _cache_put[K, V](
+    cache: OrderedDict[K, V], key: K, value: V, max_entries: int
+) -> None:
     cache[key] = value
     cache.move_to_end(key)
     if len(cache) > max_entries:
@@ -72,6 +82,7 @@ def _clear_load_caches() -> None:
     """Clear cached parsed markup and stylesheet artifacts."""
     _AUI_FILE_CACHE.clear()
     _ACSS_FILE_CACHE.clear()
+    _AUI_STRING_CACHE.clear()
     _INLINE_STYLESHEET_CACHE.clear()
 
 
@@ -124,6 +135,24 @@ def _load_cached_acss_file(path: str) -> StyleSheet:
         _MAX_ACSS_FILE_CACHE_ENTRIES,
     )
     return stylesheet
+
+
+def _load_cached_aui_string(content: str) -> tuple[AUINode | None, list[str]]:
+    cached = _cache_get(_AUI_STRING_CACHE, content)
+    if cached is not None:
+        return cached.root_node, list(cached.parser_errors)
+
+    root_node, parser_errors = parse_aui(content)
+    _cache_put(
+        _AUI_STRING_CACHE,
+        content,
+        _AUIStringCacheEntry(
+            root_node=root_node,
+            parser_errors=tuple(parser_errors),
+        ),
+        _MAX_AUI_STRING_CACHE_ENTRIES,
+    )
+    return root_node, list(parser_errors)
 
 
 def _load_cached_inline_stylesheet(content: str) -> StyleSheet:
@@ -249,7 +278,7 @@ def load_aui_string(
     components = _get_components()
     errors = ErrorCollector()
 
-    root_node, parser_errors = parse_aui(content)
+    root_node, parser_errors = _load_cached_aui_string(content)
 
     if parser_errors:
         for err in _convert_parser_errors(parser_errors):

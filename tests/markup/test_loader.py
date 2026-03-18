@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from arepy_ui.markup.loader import (
     _AUI_FILE_CACHE,
+    _AUI_STRING_CACHE,
     _INLINE_STYLESHEET_CACHE,
     _clear_load_caches,
     load_aui,
@@ -88,6 +89,23 @@ class TestLoaderCaching:
 
         assert mock_parse_acss.call_count == 1
 
+    def test_load_aui_string_reuses_parsed_aui_cache(self):
+        with patch(
+            "arepy_ui.markup.loader.parse_aui",
+            return_value=(object(), []),
+        ) as mock_parse_aui:
+            with (
+                patch(
+                    "arepy_ui.markup.loader.build_component",
+                    return_value=object(),
+                ),
+                patch("arepy_ui.markup.loader._get_components", return_value={}),
+            ):
+                load_aui_string("<text>Hello</text>")
+                load_aui_string("<text>Hello</text>")
+
+        assert mock_parse_aui.call_count == 1
+
     @patch("arepy_ui.markup.loader._get_components", return_value={})
     @patch("arepy_ui.markup.loader.build_component", return_value=object())
     def test_load_aui_file_cache_uses_lru_bound(
@@ -132,3 +150,20 @@ class TestLoaderCaching:
                     load_aui_string("<text>Hello</text>", ".c { color: #333; }")
 
         assert len(_INLINE_STYLESHEET_CACHE) == 2
+
+    def test_aui_string_cache_uses_lru_bound(self, monkeypatch):
+        monkeypatch.setattr("arepy_ui.markup.loader._MAX_AUI_STRING_CACHE_ENTRIES", 2)
+
+        with patch("arepy_ui.markup.loader.parse_aui", return_value=(object(), [])):
+            with (
+                patch(
+                    "arepy_ui.markup.loader.build_component",
+                    return_value=object(),
+                ),
+                patch("arepy_ui.markup.loader._get_components", return_value={}),
+            ):
+                load_aui_string("<text>One</text>")
+                load_aui_string("<text>Two</text>")
+                load_aui_string("<text>Three</text>")
+
+        assert len(_AUI_STRING_CACHE) == 2
