@@ -33,6 +33,12 @@ def show_options():
     global current_panel
     current_panel = "options"
     ui_manager.set_root(create_options_menu())
+
+def update(game: ArepyEngine):
+    ui_manager.update(game.get_delta_time())
+
+def draw():
+    ui_manager.render()
 ```
 
 ## Step 2: Define Styles
@@ -170,13 +176,21 @@ def on_volume_change(value):
     print(f"Volume: {value}%")
 ```
 
-## Step 5: Complete Code
+## Step 5: Wire It Into the Engine
 
-See the full example in `examples/menu_tutorial.py` or run:
+Once you have `create_main_menu()` and `create_options_menu()`, hook the manager into your Arepy world:
 
-```bash
-uv run examples/demo_menu.py
+```python
+game = ArepyEngine(title="Space Shooter", width=1280, height=720)
+world = game.create_world("main")
+world.add_startup_system(setup)
+world.add_system(SystemPipeline.UPDATE, update)
+world.add_system(SystemPipeline.RENDER, draw)
+game.set_current_world("main")
+game.run()
 ```
+
+This tutorial is intentionally assembled from small pieces. Use it as a pattern for your own project rather than as a reference to a missing demo file.
 
 ## Using AUI Markup
 
@@ -247,6 +261,22 @@ You can also build this menu with markup files:
     font-size: 12px;
     color: var(--text-dim);
 }
+```
+
+**main.py**
+```python
+from arepy_ui.markup import load_aui
+
+handlers = {
+    "start_game": start_game,
+    "show_options": show_options,
+    "quit_game": quit_game,
+}
+
+def show_main_menu():
+    result = load_aui("menu.aui", handlers=handlers)
+    if result.success and result.root is not None:
+        ui_manager.set_root(result.root)
 ```
 
 ## Tips

@@ -53,8 +53,9 @@ def setup(game: ArepyEngine):
     
     # Now create UI
     ui_manager = UIManager.from_engine(game, config=UIConfig())
-    root = load_aui("menu.aui")
-    ui_manager.set_root(root)
+    result = load_aui("menu.aui")
+    if result.success and result.root is not None:
+        ui_manager.set_root(result.root)
     game.add_resource(ui_manager)
 ```
 
@@ -149,8 +150,9 @@ def set_ocean_theme():
 
 def refresh_ui():
     # Rebuild UI to apply theme
-    root = load_aui("menu.aui")
-    ui_manager.set_root(root)
+    result = load_aui("menu.aui")
+    if result.success and result.root is not None:
+        ui_manager.set_root(result.root)
 ```
 
 ## Theme API

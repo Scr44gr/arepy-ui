@@ -2,7 +2,6 @@
 
 Using AUI/ACSS markup files.
 
-<!-- TODO: Add markup demo screenshot -->
 ## Overview
 
 This example shows how to build UI with declarative markup instead of Python code.

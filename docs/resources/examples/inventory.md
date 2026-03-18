@@ -2,7 +2,6 @@
 
 Complete grid-based inventory with drag and drop.
 
-<!-- TODO: Add inventory GIF -->
 ## Overview
 
 A full inventory system with:
@@ -29,7 +28,7 @@ See the [Inventory Tutorial](../../learn/tutorials/inventory.md) for a step-by-s
 from dataclasses import dataclass
 from typing import Optional
 from arepy import ArepyEngine, SystemPipeline
-from arepy_ui import UIManager, Node, Text, Style, Color, Unit
+from arepy_ui import UIConfig, UIManager, Node, Text, Style, Color, Unit, PositionType
 from arepy_ui.components import Draggable, DropZone
 from arepy_ui.core.types import FlexDirection, JustifyContent, AlignItems
 from arepy_ui.core.style import Spacing
@@ -124,27 +123,27 @@ def Slot(index: int, item: Optional[Item]) -> Node:
         children=[
             Draggable(
                 data={"slot": index, "item": item},
-                children=[
-                    Node(
-                        style=Style(
-                            width=Unit.px(40),
-                            height=Unit.px(40),
-                            justify_content=JustifyContent.CENTER,
-                            align_items=AlignItems.CENTER,
-                        ),
-                        children=[
-                            Text(item.icon, size=24),
-                            Text(str(item.stack), size=10, 
-                                 color=Color(255, 255, 255),
-                                 style=Style(
-                                     position="absolute",
-                                     right=Unit.px(2),
-                                     bottom=Unit.px(2),
-                                 )
-                            ) if item.stack > 1 else None,
-                        ],
+                content=Node(
+                    style=Style(
+                        width=Unit.px(40),
+                        height=Unit.px(40),
+                        justify_content=JustifyContent.CENTER,
+                        align_items=AlignItems.CENTER,
                     ),
-                ],
+                    children=[
+                        Text(item.icon, size=24),
+                        Text(
+                            str(item.stack),
+                            size=10,
+                            color=Color(255, 255, 255),
+                            style=Style(
+                                position=PositionType.ABSOLUTE,
+                                right=Unit.px(2),
+                                bottom=Unit.px(2),
+                            ),
+                        ) if item.stack > 1 else None,
+                    ],
+                ),
             ),
         ],
     )

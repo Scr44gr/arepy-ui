@@ -39,7 +39,7 @@ ITEMS = {
 Create a reusable slot:
 
 ```python
-from arepy_ui import Node, Text, Image, Style, Color, Unit, FlexDirection, JustifyContent, AlignItems
+from arepy_ui import Node, Text, Image, Style, Color, Unit, FlexDirection, JustifyContent, AlignItems, PositionType
 from arepy_ui.components import DropZone, Draggable
 
 SLOT_SIZE = 64
@@ -96,7 +96,7 @@ def InventorySlot(
                             size=10,
                             color=Color(255, 255, 255),
                             style=Style(
-                                position="absolute",
+                                position=PositionType.ABSOLUTE,
                                 right=Unit.px(2),
                                 bottom=Unit.px(2),
                             ),
