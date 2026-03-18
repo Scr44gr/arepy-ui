@@ -57,6 +57,14 @@ class TestText:
         text = Text("")
         assert text.text == ""
 
+    def test_single_line_text_uses_single_cached_line(self, mock_runtime):
+        from arepy_ui.components.text import Text
+
+        text = Text("Hello")
+
+        assert text._lines == ("Hello",)
+        assert text._is_multiline is False
+
     def test_multiline_text_measures_first_line_once(self, mock_runtime):
         from arepy_ui.components.text import Text
         from arepy_ui.core.fonts import TextMetrics

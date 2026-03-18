@@ -59,7 +59,7 @@ class Text(Node):
         self._lines: tuple[str, ...] = ()
         self._is_multiline = False
         self._line_height = 0.0
-        self._refresh_text_cache()
+        self._set_text_cache(text)
         self._update_size()
 
     @property
@@ -71,13 +71,24 @@ class Text(Node):
         if value != self._text:
             self._text = value
             self._cached_metrics = None
-            self._refresh_text_cache()
+            self._set_text_cache(value)
             self._update_size()
             self.mark_dirty()
 
-    def _refresh_text_cache(self):
-        self._lines = tuple(self._text.split("\n")) if self._text else ("",)
-        self._is_multiline = len(self._lines) > 1
+    def _set_text_cache(self, text: str):
+        if not text:
+            self._lines = ("",)
+            self._is_multiline = False
+            return
+
+        newline_index = text.find("\n")
+        if newline_index == -1:
+            self._lines = (text,)
+            self._is_multiline = False
+            return
+
+        self._lines = tuple(text.split("\n"))
+        self._is_multiline = True
 
     def _update_size(self):
         """Update node size based on text content using measure_text_ex."""
@@ -111,10 +122,6 @@ class Text(Node):
     def render(self):
         if not self.style.visible or self.style.opacity <= 0:
             return
-
-        # Ensure size is updated
-        if not hasattr(self, "_is_multiline"):
-            self._update_size()
 
         final_color = self.color
         if self.style.opacity < 1.0:
