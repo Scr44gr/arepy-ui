@@ -234,6 +234,24 @@ class TestAUIParser:
         # Parser should handle unclosed tags gracefully
         assert isinstance(parser.errors, list)
 
+    def test_parse_reports_unclosed_tag(self):
+        root, errors = parse_aui("<container>")
+
+        assert root is not None
+        assert any("Unclosed tag <container>" in error for error in errors)
+
+    def test_parse_reports_unterminated_quoted_attribute(self):
+        root, errors = parse_aui('<text value="broken></text>')
+
+        assert root is not None
+        assert any("Unterminated quoted attribute value" in error for error in errors)
+
+    def test_parse_reports_missing_gt(self):
+        root, errors = parse_aui("<container")
+
+        assert root is not None
+        assert any("Expected '>' after <container>" in error for error in errors)
+
 
 class TestParseAUIFunction:
     """Tests for the parse_aui convenience function."""

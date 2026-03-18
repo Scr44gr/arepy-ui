@@ -243,6 +243,19 @@ class TestACSSParsing:
         sheet = parse_acss(content)
         assert sheet.rules == []
 
+    def test_parse_ignores_block_and_line_comments(self):
+        content = """
+        /* remove this */
+        .first { width: 100px; }
+        // and this too
+        .second { height: 200px; }
+        """
+        sheet = parse_acss(content)
+
+        assert len(sheet.rules) == 2
+        assert sheet.resolve_class("first")["width"] == ("px", 100.0)
+        assert sheet.resolve_class("second")["height"] == ("px", 200.0)
+
 
 class TestACSSComplexStyles:
     """Tests for complex ACSS styling scenarios."""

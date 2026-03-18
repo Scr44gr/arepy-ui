@@ -1,21 +1,19 @@
 """Type stubs for aui_parser Cython module."""
 
-from typing import Any, Dict, List, Optional, Tuple
-
 class AUINode:
     """Represents a parsed AUI element node."""
 
     tag: str
-    attributes: Dict[str, Any]
-    children: List["AUINode"]
+    attributes: dict[str, str | bool]
+    children: list["AUINode"]
     text_content: str
-    parent: Optional["AUINode"]
+    parent: "AUINode" | None
     line_number: int
 
     def __init__(
         self,
         tag: str,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: dict[str, str | bool] | None = None,
         line_number: int = 0,
     ) -> None: ...
     def add_child(self, child: "AUINode") -> None:
@@ -26,7 +24,7 @@ class AUINode:
         """Get the class attribute value."""
         ...
 
-    def get_classes(self) -> List[str]:
+    def get_classes(self) -> list[str]:
         """Get list of class names."""
         ...
 
@@ -34,7 +32,7 @@ class AUINode:
         """Get the id attribute value."""
         ...
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """Convert node tree to dictionary representation."""
         ...
 
@@ -42,16 +40,16 @@ class AUIParser:
     """Parser for AUI markup syntax."""
 
     @property
-    def errors(self) -> List[str]:
+    def errors(self) -> list[str]:
         """Get list of parsing errors."""
         ...
 
     def __init__(self, content: str) -> None: ...
-    def parse(self) -> Optional[AUINode]:
+    def parse(self) -> AUINode | None:
         """Parse the content and return the root node."""
         ...
 
-def parse_aui(content: str) -> Tuple[Optional[AUINode], List[str]]:
+def parse_aui(content: str) -> tuple[AUINode | None, list[str]]:
     """
     Parse AUI markup content.
 
@@ -63,7 +61,7 @@ def parse_aui(content: str) -> Tuple[Optional[AUINode], List[str]]:
     """
     ...
 
-def parse_aui_file(path: str) -> Tuple[Optional[AUINode], List[str]]:
+def parse_aui_file(path: str) -> tuple[AUINode | None, list[str]]:
     """
     Parse an AUI file.
 
