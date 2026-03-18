@@ -82,27 +82,31 @@ class Text(Node):
     def _update_size(self):
         """Update node size based on text content using measure_text_ex."""
         if self._is_multiline:
-            # Measure first line to get line_height
-            # We assume all lines have similar height characteristics
-            metrics = measure_text_ex(self._lines[0], self.font_size, self.font_name)
-            self._line_height = metrics.line_height
+            first_line_metrics = measure_text_ex(
+                self._lines[0], self.font_size, self.font_name
+            )
+            self._line_height = first_line_metrics.line_height
 
-            max_width = 0
-            for line in self._lines:
-                m = measure_text_ex(line, self.font_size, self.font_name)
-                max_width = max(max_width, m.width)
+            max_width = first_line_metrics.width
+            for line in self._lines[1:]:
+                max_width = max(
+                    max_width,
+                    measure_text_ex(line, self.font_size, self.font_name).width,
+                )
 
-            self.style.width = Unit.px(max_width)
-            self.style.height = Unit.px(len(self._lines) * self._line_height)
+            self.style.set_measured_size(
+                max_width,
+                len(self._lines) * self._line_height,
+            )
         else:
             if self._cached_metrics is None:
                 self._cached_metrics = measure_text_ex(
                     self._text, self.font_size, self.font_name
                 )
-            self.style.width = Unit.px(self._cached_metrics.width)
-            # Use font_size as height for better vertical centering
-            # measure_text_ex may return height with extra padding
-            self.style.height = Unit.px(self.font_size)
+            self.style.set_measured_size(
+                self._cached_metrics.width,
+                self.font_size,
+            )
 
     def render(self):
         if not self.style.visible or self.style.opacity <= 0:

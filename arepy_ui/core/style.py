@@ -9,6 +9,7 @@ from .types import (
     JustifyContent,
     PositionType,
     Unit,
+    UnitType,
 )
 
 
@@ -143,6 +144,20 @@ class Style:
     def _notify_spacing_changed(self) -> None:
         self._notify_layout_changed()
 
+    def set_measured_size(self, width: float, height: float) -> bool:
+        width_changed = not _is_pixel_unit_value(self.width, width)
+        height_changed = not _is_pixel_unit_value(self.height, height)
+        if not width_changed and not height_changed:
+            return False
+
+        if width_changed:
+            object.__setattr__(self, "width", Unit.px(width))
+        if height_changed:
+            object.__setattr__(self, "height", Unit.px(height))
+
+        self._notify_layout_changed()
+        return True
+
     def _notify_layout_changed(self) -> None:
         owner = getattr(self, "_owner", None)
         if owner is not None and hasattr(owner, "mark_dirty"):
@@ -156,6 +171,10 @@ def clone_spacing(spacing: Spacing) -> Spacing:
         bottom=spacing.bottom,
         left=spacing.left,
     )
+
+
+def _is_pixel_unit_value(unit: Unit, value: float) -> bool:
+    return unit.type == UnitType.PIXEL and unit.value == value
 
 
 _DEFAULT_STYLE_REFERENCE = Style()

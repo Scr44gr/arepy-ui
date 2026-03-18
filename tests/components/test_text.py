@@ -56,3 +56,23 @@ class TestText:
 
         text = Text("")
         assert text.text == ""
+
+    def test_multiline_text_measures_first_line_once(self, mock_runtime):
+        from arepy_ui.components.text import Text
+        from arepy_ui.core.fonts import TextMetrics
+
+        metrics_by_line = {
+            "Line 1": TextMetrics(width=80.0, height=20.0, line_height=24.0),
+            "Line 2": TextMetrics(width=100.0, height=20.0, line_height=24.0),
+            "Line 3": TextMetrics(width=90.0, height=20.0, line_height=24.0),
+        }
+
+        with patch(
+            "arepy_ui.components.text.measure_text_ex",
+            side_effect=lambda text, *_args: metrics_by_line[text],
+        ) as measure_mock:
+            text = Text("Line 1\nLine 2\nLine 3")
+
+        assert measure_mock.call_count == 3
+        assert text.style.width.value == 100.0
+        assert text.style.height.value == 72.0

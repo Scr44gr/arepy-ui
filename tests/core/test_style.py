@@ -141,6 +141,28 @@ class TestStyle:
 
         owner.mark_dirty.assert_called_once()
 
+    def test_set_measured_size_marks_owner_dirty_once(self):
+        owner = MagicMock()
+        style = Style()
+        style._bind_owner(owner)
+
+        changed = style.set_measured_size(120, 40)
+
+        assert changed is True
+        assert style.width.value == 120
+        assert style.height.value == 40
+        owner.mark_dirty.assert_called_once()
+
+    def test_set_measured_size_skips_unchanged_values(self):
+        owner = MagicMock()
+        style = Style(width=Unit.px(120), height=Unit.px(40))
+        style._bind_owner(owner)
+
+        changed = style.set_measured_size(120, 40)
+
+        assert changed is False
+        owner.mark_dirty.assert_not_called()
+
     def test_merge_style_fields_clones_spacing(self):
         base = Style()
         override = Style(padding=Spacing.symmetric(4, 8))
