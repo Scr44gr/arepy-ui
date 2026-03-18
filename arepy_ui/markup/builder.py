@@ -61,6 +61,48 @@ _STYLE_CONVERTERS: Dict[str, Callable[[Any], Any]] = {
     "z_index": convert_to_int,
 }
 
+_RESOLVED_STYLE_CACHE: Dict[tuple[object, ...], Dict[str, Any]] = {}
+_INTERACTION_COLOR_CACHE: Dict[tuple[object, ...], Dict[str, Any]] = {}
+
+
+def _clear_builder_caches() -> None:
+    """Clear memoized style resolution state."""
+    _RESOLVED_STYLE_CACHE.clear()
+    _INTERACTION_COLOR_CACHE.clear()
+
+
+def _build_style_cache_key(
+    node: AUINode,
+    stylesheet: Optional[StyleSheet],
+    class_names: Sequence[str],
+    element_id: Optional[str],
+    globals_version: int,
+) -> tuple[object, ...]:
+    return (
+        globals_version,
+        id(stylesheet) if stylesheet is not None else None,
+        node.tag,
+        tuple(class_names),
+        element_id,
+        node.attributes.get("style", ""),
+    )
+
+
+def _build_interaction_cache_key(
+    node: AUINode,
+    stylesheet: Optional[StyleSheet],
+    class_names: Sequence[str],
+    element_id: Optional[str],
+    globals_version: int,
+) -> tuple[object, ...]:
+    return (
+        globals_version,
+        id(stylesheet) if stylesheet is not None else None,
+        node.tag,
+        tuple(class_names),
+        element_id,
+    )
+
 
 def _resolve_pseudo_styles(
     node: AUINode,
@@ -127,6 +169,16 @@ def _resolve_interaction_colors(
     element_id: Optional[str],
 ) -> Dict[str, Any]:
     """Resolve hover and pressed colors for interactive components."""
+    from arepy_ui.markup.globals import get_global_styles
+
+    globals_version = get_global_styles().version
+    cache_key = _build_interaction_cache_key(
+        node, stylesheet, class_names, element_id, globals_version
+    )
+    cached = _INTERACTION_COLOR_CACHE.get(cache_key)
+    if cached is not None:
+        return cached.copy()
+
     kwargs: Dict[str, Any] = {}
 
     hover_styles = _resolve_pseudo_styles(
@@ -157,6 +209,7 @@ def _resolve_interaction_colors(
         if pressed_color:
             kwargs["pressed_color"] = pressed_color
 
+    _INTERACTION_COLOR_CACHE[cache_key] = kwargs.copy()
     return kwargs
 
 
@@ -190,6 +243,16 @@ def resolve_styles(
     globals_registry = get_global_styles()
     class_names = tuple(node.get_classes())
     element_id = node.attributes.get("id")
+    cache_key = _build_style_cache_key(
+        node,
+        stylesheet,
+        class_names,
+        element_id,
+        globals_registry.version,
+    )
+    cached = _RESOLVED_STYLE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached.copy()
 
     # 1. Global element styles (lowest priority)
     global_element = globals_registry.resolve_for_element(node.tag)
@@ -256,6 +319,7 @@ def resolve_styles(
     elif node.tag == "column":
         style_dict.setdefault("flex_direction", FlexDirection.COLUMN)
 
+    _RESOLVED_STYLE_CACHE[cache_key] = style_dict.copy()
     return style_dict
 
 

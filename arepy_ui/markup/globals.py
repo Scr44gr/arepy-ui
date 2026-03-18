@@ -102,6 +102,7 @@ class GlobalStyleRegistry:
     _variables: ThemeVariables
     _cache: Dict[str, Dict[str, object]]
     _dirty: bool
+    _version: int
 
     def __new__(cls) -> GlobalStyleRegistry:
         if cls._instance is None:
@@ -110,6 +111,7 @@ class GlobalStyleRegistry:
             instance._variables = ThemeVariables()
             instance._cache = {}
             instance._dirty = False
+            instance._version = 0
             cls._instance = instance
         return cls._instance
 
@@ -188,6 +190,11 @@ class GlobalStyleRegistry:
     def theme(self) -> Optional[str]:
         """Get currently active theme variant."""
         return self._variables.active
+
+    @property
+    def version(self) -> int:
+        """Get the current cache version for invalidation-sensitive consumers."""
+        return self._version
 
     def get_variable(self, name: str) -> Optional[str]:
         """Get a CSS variable value for current theme."""
@@ -313,6 +320,7 @@ class GlobalStyleRegistry:
         """Clear cached resolved styles."""
         self._cache.clear()
         self._dirty = True
+        self._version += 1
 
     def clear(self) -> None:
         """Clear all global stylesheets and variables."""
