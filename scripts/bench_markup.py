@@ -39,6 +39,17 @@ COMPONENTS = {
 }
 
 
+class _BenchmarkFontManager:
+    def measure_text_ex(
+        self,
+        text: str,
+        font_size: float,
+        font_name: str | None = None,
+        spacing: float = 1.0,
+    ) -> TextMetrics:
+        return TextMetrics(100, 20, 24)
+
+
 def _write_fixture_files(tmp_dir: Path, item_count: int) -> tuple[Path, Path]:
     items = []
     for index in range(item_count):
@@ -77,12 +88,10 @@ button:active { background: #244caa; }
 def _benchmark_load(aui_path: Path, rounds: int) -> tuple[float, float]:
     cold_timings = []
     hot_timings = []
+    font_manager = _BenchmarkFontManager()
 
     with patch("arepy_ui.markup.loader._get_components", return_value=COMPONENTS):
-        with patch("arepy_ui.core.fonts.get_font_manager") as mock_font_manager:
-            mock_font_manager.return_value.measure_text_ex.return_value = TextMetrics(
-                100, 20, 24
-            )
+        with patch("arepy_ui.core.fonts.get_font_manager", return_value=font_manager):
 
             for _ in range(rounds):
                 clear_globals()
@@ -109,12 +118,10 @@ def _benchmark_load_string(aui_path: Path, acss_path: Path, rounds: int) -> tupl
     hot_timings = []
     content = aui_path.read_text(encoding="utf-8")
     stylesheet = acss_path.read_text(encoding="utf-8")
+    font_manager = _BenchmarkFontManager()
 
     with patch("arepy_ui.markup.loader._get_components", return_value=COMPONENTS):
-        with patch("arepy_ui.core.fonts.get_font_manager") as mock_font_manager:
-            mock_font_manager.return_value.measure_text_ex.return_value = TextMetrics(
-                100, 20, 24
-            )
+        with patch("arepy_ui.core.fonts.get_font_manager", return_value=font_manager):
 
             for _ in range(rounds):
                 clear_globals()

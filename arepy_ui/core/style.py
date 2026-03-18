@@ -28,7 +28,10 @@ class Spacing:
         if name.startswith("_"):
             return
 
-        owner_style = getattr(self, "_owner_style", None)
+        if "_owner_style" not in self.__dict__:
+            return
+
+        owner_style = self._owner_style
         if owner_style is not None:
             owner_style._notify_spacing_changed()
 
@@ -119,6 +122,9 @@ class Style:
     def __setattr__(self, name, value):
         object.__setattr__(self, name, value)
         if name.startswith("_"):
+            return
+
+        if "_owner" not in self.__dict__:
             return
 
         if name in {"margin", "padding"} and isinstance(value, Spacing):
