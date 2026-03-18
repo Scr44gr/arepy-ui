@@ -2,12 +2,7 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 # cython: cdivision=True
-"""
-Cython-optimized AUI markup parser.
-
-This is a performance-optimized version of aui_parser.py.
-Falls back to pure Python if not compiled.
-"""
+"""Cython-optimized AUI markup parser."""
 
 from typing import Any, Dict, List, Optional, Tuple
 

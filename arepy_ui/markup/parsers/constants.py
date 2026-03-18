@@ -43,6 +43,7 @@ VALID_TAGS: FrozenSet[str] = frozenset(
         "progress",
         "canvas",
         "video",
+        "colorpicker",
         # Interactive
         "draggable",
         "dropzone",

@@ -4,7 +4,7 @@ Component builder for converting AUI nodes to arepy-ui components.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence
 
 from arepy_ui.core.style import Style
 from arepy_ui.markup.converters import (
@@ -66,6 +66,9 @@ def _resolve_pseudo_styles(
     node: AUINode,
     stylesheet: Optional[StyleSheet],
     pseudo: str,
+    *,
+    class_names: Sequence[str],
+    element_id: Optional[str],
 ) -> Dict[str, Any]:
     """
     Resolve styles for a pseudo-state (hover, active) from stylesheet.
@@ -81,7 +84,6 @@ def _resolve_pseudo_styles(
     from arepy_ui.markup.globals import get_global_styles
 
     result: Dict[str, Any] = {}
-    attrs = node.attributes
     globals_registry = get_global_styles()
 
     # 1. Global element pseudo-styles
@@ -89,12 +91,11 @@ def _resolve_pseudo_styles(
     result.update(global_element)
 
     # 2. Global class pseudo-styles
-    for class_name in node.get_classes():
+    for class_name in class_names:
         global_class = globals_registry.resolve_for_class_pseudo(class_name, pseudo)
         result.update(global_class)
 
     # 3. Global ID pseudo-styles
-    element_id = attrs.get("id")
     if element_id:
         global_id = globals_registry.resolve_for_id_pseudo(element_id, pseudo)
         result.update(global_id)
@@ -107,7 +108,7 @@ def _resolve_pseudo_styles(
             result.update(element_styles)
 
         if hasattr(stylesheet, "resolve_class_pseudo"):
-            for class_name in node.get_classes():
+            for class_name in class_names:
                 class_styles = stylesheet.resolve_class_pseudo(class_name, pseudo)
                 result.update(class_styles)
 
@@ -116,6 +117,47 @@ def _resolve_pseudo_styles(
             result.update(id_styles)
 
     return result
+
+
+def _resolve_interaction_colors(
+    node: AUINode,
+    stylesheet: Optional[StyleSheet],
+    *,
+    class_names: Sequence[str],
+    element_id: Optional[str],
+) -> Dict[str, Any]:
+    """Resolve hover and pressed colors for interactive components."""
+    kwargs: Dict[str, Any] = {}
+
+    hover_styles = _resolve_pseudo_styles(
+        node,
+        stylesheet,
+        "hover",
+        class_names=class_names,
+        element_id=element_id,
+    )
+    if "background" in hover_styles or "background-color" in hover_styles:
+        bg = hover_styles.get("background") or hover_styles.get("background-color")
+        hover_color = convert_to_color(bg)
+        if hover_color:
+            kwargs["hover_color"] = hover_color
+
+    active_styles = _resolve_pseudo_styles(
+        node,
+        stylesheet,
+        "active",
+        class_names=class_names,
+        element_id=element_id,
+    )
+    if "background" in active_styles or "background-color" in active_styles:
+        bg = active_styles.get("background") or active_styles.get(
+            "background-color"
+        )
+        pressed_color = convert_to_color(bg)
+        if pressed_color:
+            kwargs["pressed_color"] = pressed_color
+
+    return kwargs
 
 
 def resolve_styles(
@@ -146,6 +188,8 @@ def resolve_styles(
 
     style_dict: Dict[str, Any] = {}
     globals_registry = get_global_styles()
+    class_names = tuple(node.get_classes())
+    element_id = node.attributes.get("id")
 
     # 1. Global element styles (lowest priority)
     global_element = globals_registry.resolve_for_element(node.tag)
@@ -155,7 +199,7 @@ def resolve_styles(
             style_dict[style_key] = _convert_style_value(style_key, value)
 
     # 2. Global class styles
-    for class_name in node.get_classes():
+    for class_name in class_names:
         global_class = globals_registry.resolve_for_class(class_name)
         for css_key, value in global_class.items():
             if css_key in CSS_TO_STYLE:
@@ -163,7 +207,6 @@ def resolve_styles(
                 style_dict[style_key] = _convert_style_value(style_key, value)
 
     # 3. Global ID styles
-    element_id = node.attributes.get("id")
     if element_id:
         global_id = globals_registry.resolve_for_id(element_id)
         for css_key, value in global_id.items():
@@ -180,7 +223,7 @@ def resolve_styles(
                 style_dict[style_key] = _convert_style_value(style_key, value)
 
         # 5. Local class styles
-        for class_name in node.get_classes():
+        for class_name in class_names:
             class_styles = stylesheet.resolve_class(class_name)
             for css_key, value in class_styles.items():
                 if css_key in CSS_TO_STYLE:
@@ -285,7 +328,14 @@ def build_component(
         kwargs["id"] = node.attributes["id"]
 
     # Tag-specific attribute handling (pass stylesheet for text color resolution)
-    _apply_tag_attributes(tag, node, handlers, kwargs, stylesheet)
+    _apply_tag_attributes(
+        tag,
+        node,
+        handlers,
+        kwargs,
+        style_props,
+        stylesheet,
+    )
 
     # Special handling for ScrollView - needs content parameter
     if tag == "scroll":
@@ -362,39 +412,25 @@ def _apply_tag_attributes(
     node: AUINode,
     handlers: Dict[str, Callable[..., Any]],
     kwargs: Dict[str, Any],
+    style_props: Dict[str, Any],
     stylesheet: Optional[StyleSheet] = None,
 ) -> None:
     """Apply tag-specific attributes to kwargs."""
     attrs = node.attributes
+    class_names = tuple(node.get_classes())
+    element_id = attrs.get("id")
 
     if tag == "text":
         kwargs["text"] = node.text_content or attrs.get("text", "")
         if "size" in attrs:
             kwargs["size"] = float(attrs["size"])
 
-        # Get color from: 1) attribute, 2) stylesheet, 3) default
-        text_color = None
         if "color" in attrs:
-            text_color = convert_to_color(attrs["color"])
-        elif stylesheet:
-            # Check ID styles first
-            element_id = attrs.get("id")
-            if element_id:
-                id_styles = stylesheet.resolve_id(element_id)
-                if "color" in id_styles:
-                    text_color = convert_to_color(id_styles["color"])
-
-            # Then check class styles
-            if text_color is None:
-                class_attr = attrs.get("class", "")
-                for class_name in class_attr.split():
-                    class_styles = stylesheet.resolve_class(class_name)
-                    if "color" in class_styles:
-                        text_color = convert_to_color(class_styles["color"])
-                        break
-
-        if text_color:
-            kwargs["color"] = text_color
+            color = convert_to_color(attrs["color"])
+            if color:
+                kwargs["color"] = color
+        elif style_props.get("text_color") is not None:
+            kwargs["color"] = style_props["text_color"]
 
     elif tag == "button":
         kwargs["text"] = node.text_content or attrs.get("text", "Button")
@@ -408,24 +444,14 @@ def _apply_tag_attributes(
         else:
             # Default empty handler if no on_click provided
             kwargs["on_click"] = lambda: None
-
-        # Resolve :hover pseudo-styles
-        hover_styles = _resolve_pseudo_styles(node, stylesheet, "hover")
-        if "background" in hover_styles or "background-color" in hover_styles:
-            bg = hover_styles.get("background") or hover_styles.get("background-color")
-            hover_color = convert_to_color(bg)
-            if hover_color:
-                kwargs["hover_color"] = hover_color
-
-        # Resolve :active pseudo-styles
-        active_styles = _resolve_pseudo_styles(node, stylesheet, "active")
-        if "background" in active_styles or "background-color" in active_styles:
-            bg = active_styles.get("background") or active_styles.get(
-                "background-color"
+        kwargs.update(
+            _resolve_interaction_colors(
+                node,
+                stylesheet,
+                class_names=class_names,
+                element_id=element_id,
             )
-            pressed_color = convert_to_color(bg)
-            if pressed_color:
-                kwargs["pressed_color"] = pressed_color
+        )
 
     elif tag == "input":
         kwargs["placeholder"] = attrs.get("placeholder", "")
@@ -453,24 +479,14 @@ def _apply_tag_attributes(
         handler_name = attrs.get("on-change")
         if handler_name and handler_name in handlers:
             kwargs["on_change"] = handlers[handler_name]
-
-        # Resolve :hover pseudo-styles
-        hover_styles = _resolve_pseudo_styles(node, stylesheet, "hover")
-        if "background" in hover_styles or "background-color" in hover_styles:
-            bg = hover_styles.get("background") or hover_styles.get("background-color")
-            hover_color = convert_to_color(bg)
-            if hover_color:
-                kwargs["hover_color"] = hover_color
-
-        # Resolve :active pseudo-styles
-        active_styles = _resolve_pseudo_styles(node, stylesheet, "active")
-        if "background" in active_styles or "background-color" in active_styles:
-            bg = active_styles.get("background") or active_styles.get(
-                "background-color"
+        kwargs.update(
+            _resolve_interaction_colors(
+                node,
+                stylesheet,
+                class_names=class_names,
+                element_id=element_id,
             )
-            pressed_color = convert_to_color(bg)
-            if pressed_color:
-                kwargs["pressed_color"] = pressed_color
+        )
 
     elif tag in ("image", "img"):
         kwargs["src"] = attrs.get("src", "")
@@ -490,23 +506,14 @@ def _apply_tag_attributes(
         kwargs["muted"] = attrs.get("muted", "false").lower() == "true"
 
     elif tag == "select":
-        # Resolve :hover pseudo-styles
-        hover_styles = _resolve_pseudo_styles(node, stylesheet, "hover")
-        if "background" in hover_styles or "background-color" in hover_styles:
-            bg = hover_styles.get("background") or hover_styles.get("background-color")
-            hover_color = convert_to_color(bg)
-            if hover_color:
-                kwargs["hover_color"] = hover_color
-
-        # Resolve :active pseudo-styles
-        active_styles = _resolve_pseudo_styles(node, stylesheet, "active")
-        if "background" in active_styles or "background-color" in active_styles:
-            bg = active_styles.get("background") or active_styles.get(
-                "background-color"
+        kwargs.update(
+            _resolve_interaction_colors(
+                node,
+                stylesheet,
+                class_names=class_names,
+                element_id=element_id,
             )
-            pressed_color = convert_to_color(bg)
-            if pressed_color:
-                kwargs["pressed_color"] = pressed_color
+        )
 
         # Extract options from child nodes
         options = []

@@ -146,6 +146,14 @@ class TestAUIParser:
         assert root.children[0].tag == "image"
         assert root.children[0].attributes.get("src") == "test.png"
 
+    def test_parse_colorpicker_tag(self):
+        content = '<colorpicker color="#ff0000" show-alpha="true" />'
+        root, errors = parse_aui(content)
+
+        assert root is not None
+        assert root.tag == "colorpicker"
+        assert errors == []
+
     def test_parse_button_tag(self):
         content = '<button id="submit" class="primary">Click Me</button>'
         root, errors = parse_aui(content)

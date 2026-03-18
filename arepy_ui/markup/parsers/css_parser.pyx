@@ -2,12 +2,7 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 # cython: cdivision=True
-"""
-Cython-optimized CSS-like parser for ACSS stylesheets.
-
-This is a performance-optimized version of css_parser.py.
-Falls back to pure Python if not compiled.
-"""
+"""Cython-optimized CSS-like parser for ACSS stylesheets."""
 
 import re
 from typing import Any, Dict, List
@@ -52,23 +47,94 @@ cdef class StyleSheet:
     cdef public dict variables
     cdef public list rules
     cdef dict _cache
+    cdef dict _element_rules
+    cdef dict _class_rules
+    cdef dict _id_rules
+    cdef dict _element_pseudo_rules
+    cdef dict _class_pseudo_rules
+    cdef dict _id_pseudo_rules
     
     def __init__(self):
         self.variables = {}
         self.rules = []
         self._cache = {}
+        self._element_rules = {}
+        self._class_rules = {}
+        self._id_rules = {}
+        self._element_pseudo_rules = {}
+        self._class_pseudo_rules = {}
+        self._id_pseudo_rules = {}
+
+    cpdef void add_rule(self, StyleRule rule):
+        """Add a rule and update selector indexes."""
+        self.rules.append(rule)
+        self._index_rule(rule)
+
+    cdef void _index_rule(self, StyleRule rule):
+        cdef str selector = rule.selector
+        cdef str base_selector
+        cdef str pseudo
+        cdef dict target_index
+        cdef dict target_props
+
+        if not selector or selector.startswith(":root"):
+            return
+
+        if ":" in selector:
+            base_selector, pseudo = selector.split(":", 1)
+            if base_selector.startswith("#"):
+                target_index = self._id_pseudo_rules
+                base_selector = base_selector[1:]
+            elif base_selector.startswith("."):
+                target_index = self._class_pseudo_rules
+                base_selector = base_selector[1:]
+            else:
+                target_index = self._element_pseudo_rules
+
+            target_props = target_index.setdefault(base_selector + ":" + pseudo, {})
+            target_props.update(rule.properties)
+            return
+
+        if selector.startswith("#"):
+            target_props = self._id_rules.setdefault(selector[1:], {})
+        elif selector.startswith("."):
+            target_props = self._class_rules.setdefault(selector[1:], {})
+        else:
+            target_props = self._element_rules.setdefault(selector, {})
+
+        target_props.update(rule.properties)
+
+    cpdef dict raw_resolve_class(self, str class_name):
+        return dict(self._class_rules.get(class_name, {}))
+
+    cpdef dict raw_resolve_classes(self, list class_names):
+        cdef dict result = {}
+        cdef str name
+        for name in class_names:
+            result.update(self._class_rules.get(name, {}))
+        return result
+
+    cpdef dict raw_resolve_element(self, str element_name):
+        return dict(self._element_rules.get(element_name, {}))
+
+    cpdef dict raw_resolve_id(self, str id_name):
+        return dict(self._id_rules.get(id_name, {}))
+
+    cpdef dict raw_resolve_class_pseudo(self, str class_name, str pseudo):
+        return dict(self._class_pseudo_rules.get(class_name + ":" + pseudo, {}))
+
+    cpdef dict raw_resolve_id_pseudo(self, str id_name, str pseudo):
+        return dict(self._id_pseudo_rules.get(id_name + ":" + pseudo, {}))
+
+    cpdef dict raw_resolve_element_pseudo(self, str element_name, str pseudo):
+        return dict(self._element_pseudo_rules.get(element_name + ":" + pseudo, {}))
     
     cpdef dict resolve_class(self, str class_name):
         """Get resolved properties for a class selector."""
         if class_name in self._cache:
             return self._cache[class_name]
-        
-        cdef dict result = {}
-        cdef StyleRule rule
-        
-        for rule in self.rules:
-            if rule.selector == "." + class_name or rule.selector == class_name:
-                result.update(rule.properties)
+
+        cdef dict result = self.raw_resolve_class(class_name)
         
         result = self._resolve_variables(result)
         self._cache[class_name] = result
@@ -76,35 +142,19 @@ cdef class StyleSheet:
     
     cpdef dict resolve_classes(self, list class_names):
         """Get merged properties for multiple class selectors."""
-        cdef dict result = {}
-        cdef str name
-        for name in class_names:
-            result.update(self.resolve_class(name))
-        return result
+        return self._resolve_variables(self.raw_resolve_classes(class_names))
     
     cpdef dict resolve_element(self, str element_name):
         """Get properties for an element selector."""
-        cdef dict result = {}
-        cdef StyleRule rule
-        
-        for rule in self.rules:
-            if rule.selector == element_name:
-                result.update(rule.properties)
-        
-        return self._resolve_variables(result)
+        return self._resolve_variables(self.raw_resolve_element(element_name))
     
     cpdef dict resolve_id(self, str id_name):
         """Get properties for an ID selector."""
         cdef str cache_key = "#" + id_name
         if cache_key in self._cache:
             return self._cache[cache_key]
-        
-        cdef dict result = {}
-        cdef StyleRule rule
-        
-        for rule in self.rules:
-            if rule.selector == "#" + id_name or rule.selector == id_name:
-                result.update(rule.properties)
+
+        cdef dict result = self.raw_resolve_id(id_name)
         
         result = self._resolve_variables(result)
         self._cache[cache_key] = result
@@ -123,14 +173,8 @@ cdef class StyleSheet:
         cdef str cache_key = "." + class_name + ":" + pseudo
         if cache_key in self._cache:
             return self._cache[cache_key]
-        
-        cdef dict result = {}
-        cdef StyleRule rule
-        cdef str target = "." + class_name + ":" + pseudo
-        
-        for rule in self.rules:
-            if rule.selector == target:
-                result.update(rule.properties)
+
+        cdef dict result = self.raw_resolve_class_pseudo(class_name, pseudo)
         
         result = self._resolve_variables(result)
         self._cache[cache_key] = result
@@ -149,14 +193,8 @@ cdef class StyleSheet:
         cdef str cache_key = "#" + id_name + ":" + pseudo
         if cache_key in self._cache:
             return self._cache[cache_key]
-        
-        cdef dict result = {}
-        cdef StyleRule rule
-        cdef str target = "#" + id_name + ":" + pseudo
-        
-        for rule in self.rules:
-            if rule.selector == target:
-                result.update(rule.properties)
+
+        cdef dict result = self.raw_resolve_id_pseudo(id_name, pseudo)
         
         result = self._resolve_variables(result)
         self._cache[cache_key] = result
@@ -175,14 +213,8 @@ cdef class StyleSheet:
         cdef str cache_key = element_name + ":" + pseudo
         if cache_key in self._cache:
             return self._cache[cache_key]
-        
-        cdef dict result = {}
-        cdef StyleRule rule
-        cdef str target = element_name + ":" + pseudo
-        
-        for rule in self.rules:
-            if rule.selector == target:
-                result.update(rule.properties)
+
+        cdef dict result = self.raw_resolve_element_pseudo(element_name, pseudo)
         
         result = self._resolve_variables(result)
         self._cache[cache_key] = result
@@ -360,7 +392,7 @@ cpdef StyleSheet parse_acss(str content):
         properties = _parse_properties(props_str)
         
         if properties:
-            sheet.rules.append(StyleRule(selector, properties))
+            sheet.add_rule(StyleRule(selector, properties))
     
     return sheet
 

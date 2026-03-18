@@ -42,9 +42,18 @@ class ThemeVariables:
         """Set base :root variables."""
         self._base = variables.copy()
 
+    def merge_base(self, variables: Dict[str, str]) -> None:
+        """Merge base variables from an additional stylesheet."""
+        self._base.update(variables)
+
     def add_variant(self, name: str, variables: Dict[str, str]) -> None:
         """Add a theme variant (e.g., 'light', 'dark')."""
         self._variants[name] = variables.copy()
+
+    def merge_variant(self, name: str, variables: Dict[str, str]) -> None:
+        """Merge variables into an existing theme variant."""
+        existing = self._variants.setdefault(name, {})
+        existing.update(variables)
 
     def activate(self, variant: Optional[str]) -> None:
         """Activate a theme variant. None returns to base."""
@@ -142,7 +151,7 @@ class GlobalStyleRegistry:
 
     def _extract_variables(self, sheet: StyleSheet) -> None:
         """Extract :root and :root.variant variables."""
-        self._variables.set_base(sheet.variables)
+        self._variables.merge_base(sheet.variables)
 
         variant_pattern = re.compile(r":root\.(\w+)")
         for rule in sheet.rules:
@@ -150,7 +159,7 @@ class GlobalStyleRegistry:
             if match:
                 variant_name = match.group(1)
                 variant_vars = self._parse_variant_variables(rule.properties)
-                self._variables.add_variant(variant_name, variant_vars)
+                self._variables.merge_variant(variant_name, variant_vars)
 
     def _parse_variant_variables(self, props: Dict[str, object]) -> Dict[str, str]:
         """Extract CSS variables from properties dict."""
@@ -196,10 +205,7 @@ class GlobalStyleRegistry:
 
         result: Dict[str, object] = {}
         for sheet in self._stylesheets:
-            # Get raw properties without variable resolution
-            for rule in sheet.rules:
-                if rule.selector == tag:
-                    result.update(rule.properties)
+            result.update(sheet.raw_resolve_element(tag))
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result
@@ -213,11 +219,7 @@ class GlobalStyleRegistry:
 
         result: Dict[str, object] = {}
         for sheet in self._stylesheets:
-            # Get raw properties without variable resolution
-            selector_dot = "." + class_name
-            for rule in sheet.rules:
-                if rule.selector == selector_dot or rule.selector == class_name:
-                    result.update(rule.properties)
+            result.update(sheet.raw_resolve_class(class_name))
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result
@@ -238,11 +240,7 @@ class GlobalStyleRegistry:
 
         result: Dict[str, object] = {}
         for sheet in self._stylesheets:
-            # Get raw properties without variable resolution
-            selector_hash = "#" + id_name
-            for rule in sheet.rules:
-                if rule.selector == selector_hash or rule.selector == id_name:
-                    result.update(rule.properties)
+            result.update(sheet.raw_resolve_id(id_name))
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result
@@ -255,11 +253,8 @@ class GlobalStyleRegistry:
             return self._cache[cache_key]
 
         result: Dict[str, object] = {}
-        target = f"{tag}:{pseudo}"
         for sheet in self._stylesheets:
-            for rule in sheet.rules:
-                if rule.selector == target:
-                    result.update(rule.properties)
+            result.update(sheet.raw_resolve_element_pseudo(tag, pseudo))
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result
@@ -274,11 +269,8 @@ class GlobalStyleRegistry:
             return self._cache[cache_key]
 
         result: Dict[str, object] = {}
-        target = f".{class_name}:{pseudo}"
         for sheet in self._stylesheets:
-            for rule in sheet.rules:
-                if rule.selector == target:
-                    result.update(rule.properties)
+            result.update(sheet.raw_resolve_class_pseudo(class_name, pseudo))
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result
@@ -291,11 +283,8 @@ class GlobalStyleRegistry:
             return self._cache[cache_key]
 
         result: Dict[str, object] = {}
-        target = f"#{id_name}:{pseudo}"
         for sheet in self._stylesheets:
-            for rule in sheet.rules:
-                if rule.selector == target:
-                    result.update(rule.properties)
+            result.update(sheet.raw_resolve_id_pseudo(id_name, pseudo))
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result

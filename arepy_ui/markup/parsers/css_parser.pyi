@@ -18,6 +18,38 @@ class StyleSheet:
     rules: List[StyleRule]
 
     def __init__(self) -> None: ...
+    def add_rule(self, rule: StyleRule) -> None:
+        """Add a rule and update selector indexes."""
+        ...
+
+    def raw_resolve_class(self, class_name: str) -> Dict[str, Any]:
+        """Get unresolved properties for a class selector."""
+        ...
+
+    def raw_resolve_classes(self, class_names: List[str]) -> Dict[str, Any]:
+        """Get unresolved merged properties for multiple class selectors."""
+        ...
+
+    def raw_resolve_id(self, id_name: str) -> Dict[str, Any]:
+        """Get unresolved properties for an ID selector."""
+        ...
+
+    def raw_resolve_element(self, element_name: str) -> Dict[str, Any]:
+        """Get unresolved properties for an element selector."""
+        ...
+
+    def raw_resolve_class_pseudo(self, class_name: str, pseudo: str) -> Dict[str, Any]:
+        """Get unresolved properties for a class pseudo selector."""
+        ...
+
+    def raw_resolve_id_pseudo(self, id_name: str, pseudo: str) -> Dict[str, Any]:
+        """Get unresolved properties for an ID pseudo selector."""
+        ...
+
+    def raw_resolve_element_pseudo(self, element_name: str, pseudo: str) -> Dict[str, Any]:
+        """Get unresolved properties for an element pseudo selector."""
+        ...
+
     def resolve_class(self, class_name: str) -> Dict[str, Any]:
         """Get resolved properties for a class selector."""
         ...

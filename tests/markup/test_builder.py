@@ -397,6 +397,29 @@ class TestResolveStylesInlineAndCascade:
 
         assert styles.get("flex_direction") == FlexDirection.COLUMN
 
+    @patch("arepy_ui.core.fonts.get_font_manager")
+    def test_text_color_is_resolved_once_from_styles(self, mock_fm):
+        from arepy_ui.core.types import Color
+        from arepy_ui.core.fonts import TextMetrics
+
+        mock_fm.return_value.measure_text_ex.return_value = TextMetrics(100, 20, 24)
+
+        aui_content = '<text class="headline">Title</text>'
+        css_content = ".headline { color: #112233; }"
+
+        root, _ = parse_aui(aui_content)
+        stylesheet = parse_acss(css_content)
+        assert root is not None
+
+        component = build_component(root, stylesheet, {}, COMPONENTS)
+
+        assert component is not None
+        assert isinstance(component, Text)
+        assert isinstance(component.color, Color)
+        assert component.color.r == 17
+        assert component.color.g == 34
+        assert component.color.b == 51
+
 
 class TestBuildComponentErrors:
     """Tests for error handling in build_component."""
