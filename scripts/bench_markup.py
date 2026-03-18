@@ -54,16 +54,16 @@ def _write_fixture_files(tmp_dir: Path, item_count: int) -> tuple[Path, Path]:
     items = []
     for index in range(item_count):
         items.append(
-            f'''<container class="card slot-{index % 3}">
+            f"""<container class="card slot-{index % 3}">
     <text class="title">Item {index}</text>
     <button class="btn primary">Go</button>
-</container>'''
+</container>"""
         )
 
     aui_path = tmp_dir / "bench.aui"
     acss_path = tmp_dir / "bench.acss"
     aui_path.write_text(
-        "<column class=\"layout\">\n" + "\n".join(items) + "\n</column>\n",
+        '<column class="layout">\n' + "\n".join(items) + "\n</column>\n",
         encoding="utf-8",
     )
     acss_path.write_text(
@@ -113,7 +113,9 @@ def _benchmark_load(aui_path: Path, rounds: int) -> tuple[float, float]:
     return statistics.mean(cold_timings), statistics.mean(hot_timings)
 
 
-def _benchmark_load_string(aui_path: Path, acss_path: Path, rounds: int) -> tuple[float, float]:
+def _benchmark_load_string(
+    aui_path: Path, acss_path: Path, rounds: int
+) -> tuple[float, float]:
     cold_timings = []
     hot_timings = []
     content = aui_path.read_text(encoding="utf-8")
