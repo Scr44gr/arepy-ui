@@ -67,6 +67,7 @@ _STYLE_CONVERTERS: Dict[str, Callable[[Any], Any]] = {
 _MAX_RESOLVED_STYLE_CACHE_ENTRIES = 256
 _MAX_INTERACTION_COLOR_CACHE_ENTRIES = 256
 _MAX_TAG_ATTRIBUTE_PLAN_CACHE_ENTRIES = 256
+_MAX_COMPILED_NODE_PLAN_CACHE_ENTRIES = 512
 
 
 @dataclass(slots=True)
@@ -75,6 +76,16 @@ class _TagAttributePlan:
     handler_bindings: tuple[tuple[tuple[str, ...], str, bool], ...]
     needs_interaction_colors: bool
 
+
+@dataclass(slots=True)
+class _CompiledNodePlan:
+    node: AUINode
+    tag: str
+    component_name: Optional[str]
+    child_plans: tuple["_CompiledNodePlan", ...]
+    line_number: Optional[int]
+
+
 _RESOLVED_STYLE_CACHE: OrderedDict[tuple[object, ...], Dict[str, Any]] = OrderedDict()
 _INTERACTION_COLOR_CACHE: OrderedDict[tuple[object, ...], Dict[str, Any]] = (
     OrderedDict()
@@ -82,6 +93,7 @@ _INTERACTION_COLOR_CACHE: OrderedDict[tuple[object, ...], Dict[str, Any]] = (
 _TAG_ATTRIBUTE_PLAN_CACHE: OrderedDict[tuple[object, ...], _TagAttributePlan] = (
     OrderedDict()
 )
+_COMPILED_NODE_PLAN_CACHE: OrderedDict[int, _CompiledNodePlan] = OrderedDict()
 
 _NOOP_HANDLER = lambda: None
 
@@ -114,6 +126,7 @@ def _clear_builder_caches() -> None:
     _RESOLVED_STYLE_CACHE.clear()
     _INTERACTION_COLOR_CACHE.clear()
     _TAG_ATTRIBUTE_PLAN_CACHE.clear()
+    _COMPILED_NODE_PLAN_CACHE.clear()
 
 
 def _build_style_cache_key(
@@ -339,6 +352,45 @@ def _get_tag_attribute_plan(node: AUINode) -> _TagAttributePlan:
     _TAG_ATTRIBUTE_PLAN_CACHE.move_to_end(cache_key)
     if len(_TAG_ATTRIBUTE_PLAN_CACHE) > _MAX_TAG_ATTRIBUTE_PLAN_CACHE_ENTRIES:
         _TAG_ATTRIBUTE_PLAN_CACHE.popitem(last=False)
+    return plan
+
+
+def _compile_node_plan_uncached(node: AUINode) -> _CompiledNodePlan:
+    tag = node.tag
+    component_name = TAG_TO_COMPONENT.get(tag)
+
+    if tag == "scroll":
+        child_plans = tuple(_compile_node_plan(child) for child in node.children)
+    elif tag in ("select", "option"):
+        child_plans = ()
+    else:
+        child_plans = tuple(
+            _compile_node_plan(child)
+            for child in node.children
+            if child.tag != "option"
+        )
+
+    return _CompiledNodePlan(
+        node=node,
+        tag=tag,
+        component_name=component_name,
+        child_plans=child_plans,
+        line_number=getattr(node, "line_number", None),
+    )
+
+
+def _compile_node_plan(node: AUINode) -> _CompiledNodePlan:
+    cache_key = id(node)
+    cached = _COMPILED_NODE_PLAN_CACHE.get(cache_key)
+    if cached is not None:
+        _COMPILED_NODE_PLAN_CACHE.move_to_end(cache_key)
+        return cached
+
+    plan = _compile_node_plan_uncached(node)
+    _COMPILED_NODE_PLAN_CACHE[cache_key] = plan
+    _COMPILED_NODE_PLAN_CACHE.move_to_end(cache_key)
+    if len(_COMPILED_NODE_PLAN_CACHE) > _MAX_COMPILED_NODE_PLAN_CACHE_ENTRIES:
+        _COMPILED_NODE_PLAN_CACHE.popitem(last=False)
     return plan
 
 
@@ -600,17 +652,34 @@ def build_component(
     if errors is None:
         errors = ErrorCollector()
 
-    tag = node.tag
+    return _build_component_from_plan(
+        _compile_node_plan(node),
+        stylesheet,
+        handlers,
+        components,
+        errors,
+    )
+
+
+def _build_component_from_plan(
+    plan: _CompiledNodePlan,
+    stylesheet: Optional[StyleSheet],
+    handlers: Dict[str, Callable[..., Any]],
+    components: Dict[str, type],
+    errors: ErrorCollector,
+) -> Optional[Node]:
+    tag = plan.tag
+    node = plan.node
 
     if tag not in TAG_TO_COMPONENT:
         errors.warning(
             f"Unknown tag '{tag}' will be ignored",
             tag=tag,
-            line=getattr(node, "line_number", None),
+            line=plan.line_number,
         )
         return None
 
-    component_name = TAG_TO_COMPONENT[tag]
+    component_name = plan.component_name
     if component_name is None:
         return None
 
@@ -619,25 +688,21 @@ def build_component(
         errors.warning(
             f"Component '{component_name}' not available",
             tag=tag,
-            line=getattr(node, "line_number", None),
+            line=plan.line_number,
         )
         return None
 
-    # Resolve styles
     style_props = resolve_styles(node, stylesheet)
     style = Style(**style_props) if style_props else None
 
-    # Build component kwargs
     kwargs: Dict[str, Any] = {}
 
     if style:
         kwargs["style"] = style
 
-    # Handle common attributes
     if "id" in node.attributes:
         kwargs["id"] = node.attributes["id"]
 
-    # Tag-specific attribute handling (pass stylesheet for text color resolution)
     _apply_tag_attributes(
         tag,
         node,
@@ -647,7 +712,6 @@ def build_component(
         stylesheet,
     )
 
-    # Special handling for ScrollView - needs content parameter
     if tag == "scroll":
         from arepy_ui.core.node import Node as CoreNode
         from arepy_ui.core.types import Unit
@@ -660,9 +724,9 @@ def build_component(
             )
         )
 
-        for child_node in node.children:
-            child = build_component(
-                child_node, stylesheet, handlers, components, errors
+        for child_plan in plan.child_plans:
+            child = _build_component_from_plan(
+                child_plan, stylesheet, handlers, components, errors
             )
             if child is not None:
                 content.add_child(child)
@@ -685,7 +749,7 @@ def build_component(
             errors.error(
                 f"Failed to create ScrollView: {e}",
                 tag=tag,
-                line=getattr(node, "line_number", None),
+                line=plan.line_number,
             )
             return None
 
@@ -698,21 +762,16 @@ def build_component(
         errors.error(
             f"Failed to create {component_name}: {e}",
             tag=tag,
-            line=getattr(node, "line_number", None),
+            line=plan.line_number,
         )
         return None
 
-    # Build children (except for special cases)
-    if tag not in ("select", "option", "scroll"):
-        for child_node in node.children:
-            if child_node.tag == "option":
-                continue
-
-            child = build_component(
-                child_node, stylesheet, handlers, components, errors
-            )
-            if child is not None:
-                component.add_child(child)
+    for child_plan in plan.child_plans:
+        child = _build_component_from_plan(
+            child_plan, stylesheet, handlers, components, errors
+        )
+        if child is not None:
+            component.add_child(child)
 
     return component
 
@@ -733,13 +792,19 @@ def _apply_tag_attributes(
     kwargs.update(_clone_plan_kwargs(plan.static_kwargs))
 
     for attr_names, target_kwarg, use_default in plan.handler_bindings:
-        handler_name = next((attrs.get(name) for name in attr_names if attrs.get(name)), None)
+        handler_name = next(
+            (attrs.get(name) for name in attr_names if attrs.get(name)), None
+        )
         if handler_name and handler_name in handlers:
             kwargs[target_kwarg] = handlers[handler_name]
         elif use_default:
             kwargs[target_kwarg] = _NOOP_HANDLER
 
-    if tag == "text" and "color" not in kwargs and style_props.get("text_color") is not None:
+    if (
+        tag == "text"
+        and "color" not in kwargs
+        and style_props.get("text_color") is not None
+    ):
         kwargs["color"] = style_props["text_color"]
 
     if plan.needs_interaction_colors:

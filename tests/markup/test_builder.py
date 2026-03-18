@@ -10,9 +10,11 @@ from arepy_ui.components.text import Text
 from arepy_ui.core.node import Node
 from arepy_ui.core.types import Unit, UnitType
 from arepy_ui.markup.builder import (
+    _COMPILED_NODE_PLAN_CACHE,
     _RESOLVED_STYLE_CACHE,
     _STYLE_CONVERTERS,
     _TAG_ATTRIBUTE_PLAN_CACHE,
+    _compile_node_plan_uncached,
     _apply_tag_attributes,
     _clear_builder_caches,
     _convert_style_value,
@@ -249,9 +251,7 @@ class TestResolveStyles:
 
         roots = []
         for width in ("10px", "20px", "30px"):
-            root, _ = parse_aui(
-                f'<input placeholder="Name" width="{width}"></input>'
-            )
+            root, _ = parse_aui(f'<input placeholder="Name" width="{width}"></input>')
             assert root is not None
             roots.append(root)
 
@@ -259,6 +259,46 @@ class TestResolveStyles:
             _apply_tag_attributes(root.tag, root, {}, {}, {}, None)
 
         assert len(_TAG_ATTRIBUTE_PLAN_CACHE) == 2
+
+    def test_compiled_node_plan_is_reused_for_same_tree(self):
+        root, _ = parse_aui(
+            """
+            <container>
+                <container></container>
+                <container></container>
+            </container>
+            """
+        )
+        assert root is not None
+
+        with patch(
+            "arepy_ui.markup.builder._compile_node_plan_uncached",
+            wraps=_compile_node_plan_uncached,
+        ) as mock_compile:
+            build_component(root, None, {}, COMPONENTS)
+            first_call_count = mock_compile.call_count
+            build_component(root, None, {}, COMPONENTS)
+
+        assert first_call_count > 0
+        assert mock_compile.call_count == first_call_count
+
+    def test_compiled_node_plan_cache_uses_lru_bound(self, monkeypatch):
+        monkeypatch.setattr(
+            "arepy_ui.markup.builder._MAX_COMPILED_NODE_PLAN_CACHE_ENTRIES", 2
+        )
+
+        roots = []
+        for index in range(3):
+            root, _ = parse_aui(
+                f"<container><container id='child-{index}'></container></container>"
+            )
+            assert root is not None
+            roots.append(root)
+
+        for root in roots:
+            build_component(root, None, {}, COMPONENTS)
+
+        assert len(_COMPILED_NODE_PLAN_CACHE) == 2
 
 
 class TestBuildComponent:
