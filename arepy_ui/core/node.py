@@ -25,8 +25,10 @@ class Node:
         children: Optional[List["Node"]] = None,
         id: Optional[str] = None,
     ):
+        initial_style = style or Style()
+
         self.id = id
-        self._style = Style()
+        self._style = initial_style
         self.children: List["Node"] = children or []
         self.parent: Optional["Node"] = None
         self._manager = None  # Reference to UIManager
@@ -52,7 +54,7 @@ class Node:
         )
         self._layout_viewport_size: Optional[tuple[float, float]] = None
         self._last_layout_request: Optional[tuple[float, float, float, float]] = None
-        self.style = style or Style()
+        self._style._bind_owner(self)
 
     @property
     def style(self) -> Style:

@@ -21,7 +21,6 @@ class Spacing:
 
     def __post_init__(self):
         object.__setattr__(self, "_owner_style", None)
-        object.__setattr__(self, "_initializing", False)
 
     def __setattr__(self, name, value):
         object.__setattr__(self, name, value)
