@@ -5,6 +5,8 @@ Component builder for converting AUI nodes to arepy-ui components.
 from __future__ import annotations
 
 from collections import OrderedDict
+from copy import copy
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence
 
 from arepy_ui.core.style import Style
@@ -64,9 +66,24 @@ _STYLE_CONVERTERS: Dict[str, Callable[[Any], Any]] = {
 
 _MAX_RESOLVED_STYLE_CACHE_ENTRIES = 256
 _MAX_INTERACTION_COLOR_CACHE_ENTRIES = 256
+_MAX_TAG_ATTRIBUTE_PLAN_CACHE_ENTRIES = 256
+
+
+@dataclass(slots=True)
+class _TagAttributePlan:
+    static_kwargs: Dict[str, Any]
+    handler_bindings: tuple[tuple[tuple[str, ...], str, bool], ...]
+    needs_interaction_colors: bool
 
 _RESOLVED_STYLE_CACHE: OrderedDict[tuple[object, ...], Dict[str, Any]] = OrderedDict()
-_INTERACTION_COLOR_CACHE: OrderedDict[tuple[object, ...], Dict[str, Any]] = OrderedDict()
+_INTERACTION_COLOR_CACHE: OrderedDict[tuple[object, ...], Dict[str, Any]] = (
+    OrderedDict()
+)
+_TAG_ATTRIBUTE_PLAN_CACHE: OrderedDict[tuple[object, ...], _TagAttributePlan] = (
+    OrderedDict()
+)
+
+_NOOP_HANDLER = lambda: None
 
 
 def _cache_get(
@@ -96,6 +113,7 @@ def _clear_builder_caches() -> None:
     """Clear memoized style resolution state."""
     _RESOLVED_STYLE_CACHE.clear()
     _INTERACTION_COLOR_CACHE.clear()
+    _TAG_ATTRIBUTE_PLAN_CACHE.clear()
 
 
 def _build_style_cache_key(
@@ -129,6 +147,199 @@ def _build_interaction_cache_key(
         tuple(class_names),
         element_id,
     )
+
+
+def _option_signature(node: AUINode) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (child.attributes.get("value", ""), child.text_content or "")
+        for child in node.children
+        if child.tag == "option"
+    )
+
+
+def _build_tag_attribute_plan_key(node: AUINode) -> tuple[object, ...]:
+    attrs = node.attributes
+    tag = node.tag
+
+    if tag == "text":
+        return (
+            tag,
+            node.text_content,
+            attrs.get("text"),
+            attrs.get("size"),
+            attrs.get("color"),
+        )
+    if tag == "button":
+        return (
+            tag,
+            node.text_content,
+            attrs.get("text"),
+            attrs.get("width"),
+            attrs.get("height"),
+        )
+    if tag == "input":
+        return (
+            tag,
+            attrs.get("placeholder"),
+            attrs.get("value"),
+            attrs.get("width"),
+            attrs.get("height"),
+        )
+    if tag == "slider":
+        return (tag, attrs.get("min"), attrs.get("max"), attrs.get("value"))
+    if tag == "checkbox":
+        return (tag, attrs.get("checked"))
+    if tag in ("image", "img"):
+        return (tag, attrs.get("src"))
+    if tag == "progress":
+        return (tag, attrs.get("value"), attrs.get("max"))
+    if tag == "video":
+        return (
+            tag,
+            attrs.get("src"),
+            attrs.get("source"),
+            attrs.get("width"),
+            attrs.get("height"),
+            attrs.get("autoplay"),
+            attrs.get("loop"),
+            attrs.get("muted"),
+        )
+    if tag == "select":
+        return (tag, _option_signature(node))
+    if tag == "scroll":
+        return (tag, attrs.get("width"), attrs.get("height"))
+    if tag == "colorpicker":
+        return (
+            tag,
+            attrs.get("width"),
+            attrs.get("height"),
+            attrs.get("color"),
+            attrs.get("show-alpha"),
+            attrs.get("show-preview"),
+        )
+
+    return (tag,)
+
+
+def _clone_plan_kwargs(static_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value.copy() if isinstance(value, list) else copy(value)
+        for key, value in static_kwargs.items()
+    }
+
+
+def _build_tag_attribute_plan(node: AUINode) -> _TagAttributePlan:
+    attrs = node.attributes
+    tag = node.tag
+    static_kwargs: Dict[str, Any] = {}
+    handler_bindings: list[tuple[tuple[str, ...], str, bool]] = []
+    needs_interaction_colors = False
+
+    if tag == "text":
+        static_kwargs["text"] = node.text_content or attrs.get("text", "")
+        if "size" in attrs:
+            static_kwargs["size"] = float(attrs["size"])
+        if "color" in attrs:
+            color = convert_to_color(attrs["color"])
+            if color:
+                static_kwargs["color"] = color
+
+    elif tag == "button":
+        static_kwargs["text"] = node.text_content or attrs.get("text", "Button")
+        if "width" in attrs:
+            static_kwargs["width"] = convert_to_unit(attrs["width"])
+        if "height" in attrs:
+            static_kwargs["height"] = convert_to_unit(attrs["height"])
+        handler_bindings.append((("on-click", "onclick"), "on_click", True))
+        needs_interaction_colors = True
+
+    elif tag == "input":
+        static_kwargs["placeholder"] = attrs.get("placeholder", "")
+        if "value" in attrs:
+            static_kwargs["text"] = attrs["value"]
+        if "width" in attrs:
+            static_kwargs["width"] = convert_to_unit(attrs["width"])
+        if "height" in attrs:
+            static_kwargs["height"] = convert_to_unit(attrs["height"])
+        handler_bindings.append((("on-change",), "on_change", False))
+
+    elif tag == "slider":
+        static_kwargs["min_value"] = float(attrs.get("min", 0))
+        static_kwargs["max_value"] = float(attrs.get("max", 100))
+        static_kwargs["value"] = float(attrs.get("value", 50))
+        handler_bindings.append((("on-change",), "on_change", False))
+
+    elif tag == "checkbox":
+        checked = attrs.get("checked", False)
+        static_kwargs["checked"] = checked == "true" or checked is True
+        handler_bindings.append((("on-change",), "on_change", False))
+        needs_interaction_colors = True
+
+    elif tag in ("image", "img"):
+        static_kwargs["src"] = attrs.get("src", "")
+
+    elif tag == "progress":
+        static_kwargs["value"] = float(attrs.get("value", 0))
+        static_kwargs["max_value"] = float(attrs.get("max", 100))
+
+    elif tag == "video":
+        static_kwargs["source"] = attrs.get("src", attrs.get("source", ""))
+        if "width" in attrs:
+            static_kwargs["width"] = convert_to_unit(attrs["width"])
+        if "height" in attrs:
+            static_kwargs["height"] = convert_to_unit(attrs["height"])
+        static_kwargs["autoplay"] = attrs.get("autoplay", "false").lower() == "true"
+        static_kwargs["loop"] = attrs.get("loop", "false").lower() == "true"
+        static_kwargs["muted"] = attrs.get("muted", "false").lower() == "true"
+
+    elif tag == "select":
+        static_kwargs["options"] = [
+            child.attributes.get("value", child.text_content or "")
+            for child in node.children
+            if child.tag == "option"
+        ]
+        handler_bindings.append((("on-change",), "on_select", False))
+        needs_interaction_colors = True
+
+    elif tag == "scroll":
+        if "width" in attrs:
+            static_kwargs["width"] = convert_to_unit(attrs["width"])
+        if "height" in attrs:
+            static_kwargs["height"] = convert_to_unit(attrs["height"])
+
+    elif tag == "colorpicker":
+        if "width" in attrs:
+            static_kwargs["width"] = convert_to_unit(attrs["width"])
+        if "height" in attrs:
+            static_kwargs["height"] = convert_to_unit(attrs["height"])
+        if "color" in attrs:
+            static_kwargs["color"] = convert_to_color(attrs["color"])
+        if "show-alpha" in attrs:
+            static_kwargs["show_alpha"] = attrs["show-alpha"].lower() == "true"
+        if "show-preview" in attrs:
+            static_kwargs["show_preview"] = attrs["show-preview"].lower() == "true"
+        handler_bindings.append((("on-change",), "on_change", False))
+
+    return _TagAttributePlan(
+        static_kwargs=static_kwargs,
+        handler_bindings=tuple(handler_bindings),
+        needs_interaction_colors=needs_interaction_colors,
+    )
+
+
+def _get_tag_attribute_plan(node: AUINode) -> _TagAttributePlan:
+    cache_key = _build_tag_attribute_plan_key(node)
+    cached = _TAG_ATTRIBUTE_PLAN_CACHE.get(cache_key)
+    if cached is not None:
+        _TAG_ATTRIBUTE_PLAN_CACHE.move_to_end(cache_key)
+        return cached
+
+    plan = _build_tag_attribute_plan(node)
+    _TAG_ATTRIBUTE_PLAN_CACHE[cache_key] = plan
+    _TAG_ATTRIBUTE_PLAN_CACHE.move_to_end(cache_key)
+    if len(_TAG_ATTRIBUTE_PLAN_CACHE) > _MAX_TAG_ATTRIBUTE_PLAN_CACHE_ENTRIES:
+        _TAG_ATTRIBUTE_PLAN_CACHE.popitem(last=False)
+    return plan
 
 
 def _resolve_pseudo_styles(
@@ -518,31 +729,20 @@ def _apply_tag_attributes(
     attrs = node.attributes
     class_names = tuple(node.get_classes())
     element_id = attrs.get("id")
+    plan = _get_tag_attribute_plan(node)
+    kwargs.update(_clone_plan_kwargs(plan.static_kwargs))
 
-    if tag == "text":
-        kwargs["text"] = node.text_content or attrs.get("text", "")
-        if "size" in attrs:
-            kwargs["size"] = float(attrs["size"])
-
-        if "color" in attrs:
-            color = convert_to_color(attrs["color"])
-            if color:
-                kwargs["color"] = color
-        elif style_props.get("text_color") is not None:
-            kwargs["color"] = style_props["text_color"]
-
-    elif tag == "button":
-        kwargs["text"] = node.text_content or attrs.get("text", "Button")
-        if "width" in attrs:
-            kwargs["width"] = convert_to_unit(attrs["width"])
-        if "height" in attrs:
-            kwargs["height"] = convert_to_unit(attrs["height"])
-        handler_name = attrs.get("on-click") or attrs.get("onclick")
+    for attr_names, target_kwarg, use_default in plan.handler_bindings:
+        handler_name = next((attrs.get(name) for name in attr_names if attrs.get(name)), None)
         if handler_name and handler_name in handlers:
-            kwargs["on_click"] = handlers[handler_name]
-        else:
-            # Default empty handler if no on_click provided
-            kwargs["on_click"] = lambda: None
+            kwargs[target_kwarg] = handlers[handler_name]
+        elif use_default:
+            kwargs[target_kwarg] = _NOOP_HANDLER
+
+    if tag == "text" and "color" not in kwargs and style_props.get("text_color") is not None:
+        kwargs["color"] = style_props["text_color"]
+
+    if plan.needs_interaction_colors:
         kwargs.update(
             _resolve_interaction_colors(
                 node,
@@ -551,99 +751,3 @@ def _apply_tag_attributes(
                 element_id=element_id,
             )
         )
-
-    elif tag == "input":
-        kwargs["placeholder"] = attrs.get("placeholder", "")
-        if "value" in attrs:
-            kwargs["text"] = attrs["value"]
-        if "width" in attrs:
-            kwargs["width"] = convert_to_unit(attrs["width"])
-        if "height" in attrs:
-            kwargs["height"] = convert_to_unit(attrs["height"])
-        handler_name = attrs.get("on-change")
-        if handler_name and handler_name in handlers:
-            kwargs["on_change"] = handlers[handler_name]
-
-    elif tag == "slider":
-        kwargs["min_value"] = float(attrs.get("min", 0))
-        kwargs["max_value"] = float(attrs.get("max", 100))
-        kwargs["value"] = float(attrs.get("value", 50))
-        handler_name = attrs.get("on-change")
-        if handler_name and handler_name in handlers:
-            kwargs["on_change"] = handlers[handler_name]
-
-    elif tag == "checkbox":
-        checked = attrs.get("checked", False)
-        kwargs["checked"] = checked == "true" or checked is True
-        handler_name = attrs.get("on-change")
-        if handler_name and handler_name in handlers:
-            kwargs["on_change"] = handlers[handler_name]
-        kwargs.update(
-            _resolve_interaction_colors(
-                node,
-                stylesheet,
-                class_names=class_names,
-                element_id=element_id,
-            )
-        )
-
-    elif tag in ("image", "img"):
-        kwargs["src"] = attrs.get("src", "")
-
-    elif tag == "progress":
-        kwargs["value"] = float(attrs.get("value", 0))
-        kwargs["max_value"] = float(attrs.get("max", 100))
-
-    elif tag == "video":
-        kwargs["source"] = attrs.get("src", attrs.get("source", ""))
-        if "width" in attrs:
-            kwargs["width"] = convert_to_unit(attrs["width"])
-        if "height" in attrs:
-            kwargs["height"] = convert_to_unit(attrs["height"])
-        kwargs["autoplay"] = attrs.get("autoplay", "false").lower() == "true"
-        kwargs["loop"] = attrs.get("loop", "false").lower() == "true"
-        kwargs["muted"] = attrs.get("muted", "false").lower() == "true"
-
-    elif tag == "select":
-        kwargs.update(
-            _resolve_interaction_colors(
-                node,
-                stylesheet,
-                class_names=class_names,
-                element_id=element_id,
-            )
-        )
-
-        # Extract options from child nodes
-        options = []
-        for child in node.children:
-            if child.tag == "option":
-                value = child.attributes.get("value", child.text_content or "")
-                options.append(value)
-        kwargs["options"] = options
-        handler_name = attrs.get("on-change")
-        if handler_name and handler_name in handlers:
-            kwargs["on_select"] = handlers[handler_name]
-
-    elif tag == "scroll":
-        # Handle width/height from attributes
-        if "width" in attrs:
-            kwargs["width"] = convert_to_unit(attrs["width"])
-        if "height" in attrs:
-            kwargs["height"] = convert_to_unit(attrs["height"])
-
-    elif tag == "colorpicker":
-        # ColorPicker attributes
-        if "width" in attrs:
-            kwargs["width"] = convert_to_unit(attrs["width"])
-        if "height" in attrs:
-            kwargs["height"] = convert_to_unit(attrs["height"])
-        if "color" in attrs:
-            kwargs["color"] = convert_to_color(attrs["color"])
-        if "show-alpha" in attrs:
-            kwargs["show_alpha"] = attrs["show-alpha"].lower() == "true"
-        if "show-preview" in attrs:
-            kwargs["show_preview"] = attrs["show-preview"].lower() == "true"
-        handler_name = attrs.get("on-change")
-        if handler_name and handler_name in handlers:
-            kwargs["on_change"] = handlers[handler_name]

@@ -11,8 +11,9 @@ from arepy_ui.core.node import Node
 from arepy_ui.core.types import Unit, UnitType
 from arepy_ui.markup.builder import (
     _RESOLVED_STYLE_CACHE,
-    _MAX_RESOLVED_STYLE_CACHE_ENTRIES,
     _STYLE_CONVERTERS,
+    _TAG_ATTRIBUTE_PLAN_CACHE,
+    _apply_tag_attributes,
     _clear_builder_caches,
     _convert_style_value,
     build_component,
@@ -219,7 +220,9 @@ class TestResolveStyles:
         assert reset.get("text_color") is None
 
     def test_resolved_style_cache_uses_lru_bound(self, monkeypatch):
-        monkeypatch.setattr("arepy_ui.markup.builder._MAX_RESOLVED_STYLE_CACHE_ENTRIES", 2)
+        monkeypatch.setattr(
+            "arepy_ui.markup.builder._MAX_RESOLVED_STYLE_CACHE_ENTRIES", 2
+        )
 
         stylesheet = parse_acss(
             """
@@ -238,6 +241,24 @@ class TestResolveStyles:
             resolve_styles(root, stylesheet)
 
         assert len(_RESOLVED_STYLE_CACHE) == 2
+
+    def test_tag_attribute_plan_cache_uses_lru_bound(self, monkeypatch):
+        monkeypatch.setattr(
+            "arepy_ui.markup.builder._MAX_TAG_ATTRIBUTE_PLAN_CACHE_ENTRIES", 2
+        )
+
+        roots = []
+        for width in ("10px", "20px", "30px"):
+            root, _ = parse_aui(
+                f'<input placeholder="Name" width="{width}"></input>'
+            )
+            assert root is not None
+            roots.append(root)
+
+        for root in roots:
+            _apply_tag_attributes(root.tag, root, {}, {}, {}, None)
+
+        assert len(_TAG_ATTRIBUTE_PLAN_CACHE) == 2
 
 
 class TestBuildComponent:
