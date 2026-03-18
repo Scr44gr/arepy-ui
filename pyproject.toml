@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "arepy-ui"
 description = "An open-source ui library for arepy"
 authors = [{ name = "Abrahan Gil", email = "scr44gr@protonmail.com" }]
-license = { file = "LICENSE" }
+license = "MIT"
 classifiers = [
     'Development Status :: 3 - Alpha',
     'Programming Language :: Python :: 3.11',
@@ -100,6 +100,9 @@ before-build = "pip install cython>=3.0"
 
 [tool.uv.sources]
 arepy = { git = "https://github.com/Scr44gr/arepy", rev = "40f8a4bcbdc16e6ce8af0e8232e340eff7237bf6" }
+
+[tool.uv]
+package = false
 
 [tool.ty.environment]
 root = ["./"]
