@@ -3,12 +3,15 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from arepy.ecs.systems import SystemPipeline
+from arepy.ecs.world import World
 from arepy.engine.input import Key
+from arepy.engine.time import Time
 
 from arepy_ui.config import ResizeMode, UIConfig
 from arepy_ui.core.node import Node
 from arepy_ui.core.style import Style
-from arepy_ui.core.types import Unit
+from arepy_ui.core.types import FlexDirection, Unit
 
 
 @pytest.fixture
@@ -18,12 +21,15 @@ def mock_runtime():
     mock.display.get_window_size.return_value = (1280, 720)
     mock.renderer.get_font_default.return_value = MagicMock()
     mock.renderer.is_stencil_available.return_value = True
+    mock.renderer.measure_text_ex.return_value = (100.0, 20.0)
     mock.input.get_mouse_position.return_value = (0, 0)
     mock.input.is_mouse_button_pressed.return_value = False
 
     with patch("arepy_ui.manager.get_runtime", return_value=mock):
         with patch("arepy_ui.runtime.get_runtime", return_value=mock):
-            yield mock
+            with patch("arepy_ui.core.node.get_runtime", return_value=mock):
+                with patch("arepy_ui.core.fonts.get_runtime", return_value=mock):
+                    yield mock
 
 
 class TestUIManager:
@@ -121,6 +127,119 @@ class TestUIManager:
 
                 # Verify manager was created with config
                 assert manager.config.resize_mode == ResizeMode.RESPONSIVE
+
+    def test_from_world(self, mock_runtime):
+        """Test creating UIManager from a World's shared resources."""
+        from arepy_ui.manager import UIManager
+
+        mock_world = MagicMock()
+        renderer = MagicMock()
+        input_device = MagicMock()
+        display = MagicMock()
+        asset_store = MagicMock()
+        audio_device = MagicMock()
+
+        def get_resource(resource_type):
+            resources = {
+                "Renderer2D": renderer,
+                "Input": input_device,
+                "Display": display,
+                "AssetStore": asset_store,
+                "AudioDevice": audio_device,
+            }
+            return resources[resource_type.__name__]
+
+        mock_world.get_resource.side_effect = get_resource
+
+        with patch("arepy_ui.manager.configure_runtime") as mock_configure:
+            manager = UIManager.from_world(mock_world, config=UIConfig())
+
+        mock_configure.assert_called_once_with(
+            renderer=renderer,
+            input=input_device,
+            display=display,
+            asset_store=asset_store,
+            audio_device=audio_device,
+        )
+        assert manager.config is not None
+
+    def test_install_registers_resource_and_systems(self, mock_runtime):
+        from arepy_ui.manager import (
+            UIManager,
+            _world_render_system,
+            _world_update_system,
+        )
+
+        mock_world = MagicMock()
+        renderer = MagicMock()
+        input_device = MagicMock()
+        display = MagicMock()
+
+        def get_resource(resource_type):
+            resources = {
+                "Renderer2D": renderer,
+                "Input": input_device,
+                "Display": display,
+            }
+            if resource_type.__name__ not in resources:
+                raise KeyError(resource_type.__name__)
+            return resources[resource_type.__name__]
+
+        mock_world.get_resource.side_effect = get_resource
+        root = Node(style=Style(width=Unit.px(100), height=Unit.px(50)))
+
+        manager = UIManager.install(mock_world, root=root, config=UIConfig())
+
+        mock_world.add_resource.assert_called_once_with(manager)
+        assert mock_world.add_system.call_count == 2
+        assert mock_world.add_system.call_args_list[0].args == (
+            SystemPipeline.UPDATE,
+            _world_update_system,
+        )
+        assert mock_world.add_system.call_args_list[1].args == (
+            SystemPipeline.RENDER_UI,
+            _world_render_system,
+        )
+        assert manager.root is root
+
+    def test_update_system_uses_injected_time_and_input(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+        manager.update = MagicMock()
+
+        time = Time(0.0)
+        time.delta_seconds = 0.25
+        input_device = MagicMock()
+        input_device.get_mouse_wheel_delta.return_value = -2.0
+
+        manager.update_system(time, input_device)
+
+        manager.update.assert_called_once_with(0.25, wheel_scroll=-2.0)
+
+    def test_installed_world_system_receives_ui_manager_resources(self, mock_runtime):
+        from arepy_ui.manager import UIManager, _world_update_system
+
+        time = Time(0.0)
+        time.delta_seconds = 0.5
+        input_device = MagicMock()
+        input_device.get_mouse_wheel_delta.return_value = 1.25
+        world = World(
+            "test",
+            global_resources={
+                "Time": time,
+                "Input": input_device,
+            },
+        )
+
+        manager = UIManager()
+        manager.update = MagicMock()
+        world.add_resource(manager)
+        world.add_system(SystemPipeline.UPDATE, _world_update_system)
+
+        world.get_registry().run(SystemPipeline.UPDATE)
+
+        manager.update.assert_called_once_with(0.5, wheel_scroll=1.25)
 
     def test_update_toggles_integrated_debugger_with_default_key(self, mock_runtime):
         from arepy_ui.manager import UIManager
@@ -477,21 +596,27 @@ class TestUIManagerUpdate:
     def test_update_resize_debounce(self, mock_runtime):
         from arepy_ui.manager import UIManager
 
-        config = UIConfig(layout_debounce_ms=100)
+        config = UIConfig(layout_debounce_ms=100, resize_mode=ResizeMode.RESPONSIVE)
         manager = UIManager(config=config)
-        manager.set_root(Node())
+        root = Node(style=Style(width=Unit.vw(50), height=Unit.vh(25)))
+        manager.set_root(root)
+
+        assert root.computed_width == 640
+        assert root.computed_height == 180
 
         # Simulate resize
         mock_runtime.display.get_window_size.return_value = (1920, 1080)
         manager.update(0.016)
 
-        # Should have pending resize
-        assert manager._pending_resize is True
+        # Layout should still be debounced
+        assert root.computed_width == 640
+        assert root.computed_height == 180
 
         # After debounce time passes
         manager.update(0.1)
 
-        assert manager._pending_resize is False
+        assert root.computed_width == 960
+        assert root.computed_height == 270
 
 
 class TestUIManagerPartialLayout:
@@ -554,6 +679,33 @@ class TestUIManagerPartialLayout:
         assert container.layout_calls == 1
         assert child.layout_calls == 1
         assert sibling.layout_calls == 0
+
+    def test_partial_relayout_preserves_final_flex_position(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+        root = Node(
+            style=Style(
+                width=Unit.px(200),
+                height=Unit.px(200),
+                flex_direction=FlexDirection.COLUMN,
+                gap=10,
+            )
+        )
+        first = Node(style=Style(width=Unit.px(50), height=Unit.px(50)))
+        second = Node(style=Style(width=Unit.px(50), height=Unit.px(50)))
+
+        root.add_child(first)
+        root.add_child(second)
+
+        manager.set_root(root)
+
+        assert second.computed_y == 60
+
+        manager.mark_dirty_node(second)
+        manager._recalculate_layout()
+
+        assert second.computed_y == 60
 
     def test_update_click_clears_focus(self, mock_runtime):
         from arepy_ui.manager import UIManager
@@ -724,17 +876,13 @@ class TestTooltipSystem:
         node.tooltip = "Test tooltip"  # type: ignore
         manager._hovered_node = node
 
-        # First update - timer starts, tooltip text set
-        manager._update_tooltip(Vector2(100, 100), 0.3)
-        manager._tooltip_text = (
-            "Test tooltip"  # Ensure text matches for timer increment
-        )
+        manager._update_tooltip(Vector2(100, 100))
         assert manager._tooltip_visible is False
 
-        # Manually set tooltip_timer to simulate time passing
-        manager._tooltip_timer = 0.3
-        # Second update with same tooltip text - timer exceeds delay
-        manager._update_tooltip(Vector2(100, 100), 0.3)
+        manager.timers.update(0.3)
+        assert manager._tooltip_visible is False
+
+        manager.timers.update(0.3)
         assert manager._tooltip_visible is True
 
     def test_update_tooltip_resets_on_change(self, mock_runtime):
@@ -748,10 +896,8 @@ class TestTooltipSystem:
         node1.tooltip = "Tooltip 1"  # type: ignore
         manager._hovered_node = node1
 
-        # Set first tooltip manually and make it visible
-        manager._tooltip_text = "Tooltip 1"
-        manager._tooltip_timer = 0.2
-        manager._update_tooltip(Vector2(100, 100), 0.2)
+        manager._update_tooltip(Vector2(100, 100))
+        manager.timers.update(0.2)
         assert manager._tooltip_visible is True
 
         # Change to new tooltip
@@ -759,8 +905,10 @@ class TestTooltipSystem:
         node2.tooltip = "Tooltip 2"  # type: ignore
         manager._hovered_node = node2
 
-        manager._update_tooltip(Vector2(100, 100), 0.05)
-        # Timer should reset
+        manager._update_tooltip(Vector2(100, 100))
+        assert manager._tooltip_visible is False
+
+        manager.timers.update(0.05)
         assert manager._tooltip_visible is False
 
     def test_update_tooltip_clears_when_no_tooltip(self, mock_runtime):
@@ -774,16 +922,14 @@ class TestTooltipSystem:
         manager._hovered_node = node
         manager._tooltip_delay = 0.1
 
-        # Set tooltip visible manually
-        manager._tooltip_text = "Test"
-        manager._tooltip_timer = 0.2
-        manager._update_tooltip(Vector2(100, 100), 0.2)
+        manager._update_tooltip(Vector2(100, 100))
+        manager.timers.update(0.2)
         assert manager._tooltip_visible is True
 
         # Clear hovered node
         manager._hovered_node = Node()  # No tooltip
 
-        manager._update_tooltip(Vector2(100, 100), 0.016)
+        manager._update_tooltip(Vector2(100, 100))
         assert manager._tooltip_visible is False
 
 

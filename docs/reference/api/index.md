@@ -7,7 +7,7 @@ This section is the source-aligned reference for the API pages currently maintai
 - [docs/reference/api/index.md](index.md) - entry point and navigation notes for the API reference.
 - [docs/reference/api/uimanager.md](uimanager.md) - `UIManager`, `UIConfig`, and overlay helpers.
 - [docs/reference/api/debugger.md](debugger.md) - `UIDebugger` and debug-overlay behavior.
-- [docs/reference/api/animations.md](animations.md) - animation, timeline, and transition primitives.
+- [docs/reference/api/animations.md](animations.md) - animation, timers, timeline, and transition primitives.
 
 ## Source of Truth
 
@@ -19,6 +19,7 @@ These pages are backed by the library source through `mkdocstrings`, so signatur
 from arepy_ui import (
     AlignItems,
     Animation,
+    Animator,
     Button,
     Color,
     Easing,
@@ -30,6 +31,8 @@ from arepy_ui import (
     ScrollView,
     Spacing,
     Style,
+    Timer,
+    Timers,
     Text,
     Timeline,
     UIConfig,

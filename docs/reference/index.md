@@ -80,4 +80,4 @@ Ready-to-use UI components organized by category:
 |-------|-------------|
 | [UIManager](api/uimanager.md) | Main UI controller |
 | [UIDebugger](api/debugger.md) | Visual debugging tool |
-| [Animations](api/animations.md) | Tweening system |
+| [Animations](api/animations.md) | Sequenced animator and timers |

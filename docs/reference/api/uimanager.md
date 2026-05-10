@@ -5,28 +5,24 @@
 ## Typical Usage
 
 ```python
-from arepy import ArepyEngine, Display, Input, Renderer2D, SystemPipeline
+from arepy import ArepyEngine
 from arepy_ui import UIConfig, UIManager
 
-ui_manager: UIManager | None = None
+game = ArepyEngine(title="UI Demo", width=1280, height=720)
+world = game.create_world("main")
 
-def setup(game: ArepyEngine) -> None:
-    global ui_manager
-    ui_manager = UIManager.from_engine(game, config=UIConfig())
-    ui_manager.set_root(create_ui())
-
-def ui_update_system(renderer: Renderer2D, input: Input, display: Display) -> None:
-    assert ui_manager is not None
-    ui_manager.update(renderer.get_delta_time())
-
-def ui_render_system(renderer: Renderer2D) -> None:
-    assert ui_manager is not None
-    ui_manager.render()
+ui_manager = UIManager.install(
+    world,
+    config=UIConfig(),
+    root=create_ui(),
+)
 ```
 
 ## Notes
 
-- `from_engine()` is the recommended constructor because it configures renderer, input, display, asset store, and audio device.
+- `install()` is the recommended entry point when your UI lives inside an arepy `World`.
+- `from_world()` configures runtime services from the world's shared resources when you want manual control.
+- `from_engine()` remains available for non-world or legacy setup paths.
 - `find_by_id()` belongs to `Node`, so use `ui_manager.root.find_by_id(...)` when the root exists.
 - Debug overlay management is built in through `get_debugger()`, `enable_debug_overlay()`, `toggle_debug_overlay()`, and the `UIConfig` debug keys.
 

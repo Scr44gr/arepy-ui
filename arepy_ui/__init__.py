@@ -30,6 +30,7 @@ from .core.fonts import (
 )
 from .core.node import Node
 from .core.style import Spacing, Style
+from .core.timers import Timer, Timers
 from .core.transitions import (
     CircleReveal,
     FadeTransition,
@@ -78,6 +79,8 @@ __all__ = [
     "Animation",
     "Easing",
     "Animator",
+    "Timer",
+    "Timers",
     # Transitions & Motion Graphics
     "Timeline",
     "KeyFrame",

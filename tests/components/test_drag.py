@@ -12,6 +12,7 @@ from arepy_ui.components.drag import (
     get_drag_state,
     is_dragging,
 )
+from arepy_ui.core.animation import Easing
 from arepy_ui.core.node import Node
 from arepy_ui.core.style import Style
 from arepy_ui.core.types import Color, Unit
@@ -535,12 +536,34 @@ class TestDraggableAnimateReturn:
 
         mock_manager = MagicMock()
         mock_manager.animator = MagicMock()
+        first_animation = MagicMock()
+        second_animation = MagicMock()
+        first_animation.to.return_value = first_animation
+        first_animation.start.return_value = first_animation
+        second_animation.to.return_value = second_animation
+        second_animation.call.return_value = second_animation
+        second_animation.start.return_value = second_animation
+        mock_manager.animator.create.side_effect = [first_animation, second_animation]
         draggable._manager = mock_manager
 
         draggable._animate_return()
 
-        # Should add animations to manager
-        assert mock_manager.animator.add.call_count == 2
+        assert mock_manager.animator.create.call_count == 2
+        first_animation.to.assert_called_once_with(
+            draggable,
+            "computed_x",
+            100,
+            0.2,
+            Easing.EASE_OUT_CUBIC,
+        )
+        second_animation.to.assert_called_once_with(
+            draggable,
+            "computed_y",
+            100,
+            0.2,
+            Easing.EASE_OUT_CUBIC,
+        )
+        second_animation.call.assert_called_once_with(draggable.mark_dirty)
 
 
 class TestDraggableRenderAsOverlay:

@@ -17,7 +17,7 @@ UI library for [Arepy](https://github.com/Scr44gr/arepy) game engine. Build game
 - :material-file-document: **Declarative Markup** - HTML-like `.aui` and CSS-like `.acss` files
 - :material-palette: **Theme Support** - CSS variables with light/dark variants
 - :material-cursor-move: **Drag & Drop** - Built-in drag and drop support
-- :material-animation: **Animations** - Tweening system with easing functions
+- :material-animation: **Animations** - Sequenced animator and timers with easing functions
 - :material-text: **Custom Fonts** - TTF/OTF font support
 - :material-monitor: **Responsive** - Multiple resize modes
 

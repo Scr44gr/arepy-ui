@@ -9,13 +9,10 @@ Este ejemplo demuestra:
 """
 
 import raylib as rl
-from arepy import ArepyEngine, Display, Input, Renderer2D, SystemPipeline
-from arepy.ecs.world import World
+from arepy import ArepyEngine
 
 from arepy_ui import (
     AlignItems,
-    Animation,
-    Animator,
     Button,
     Color,
     Easing,
@@ -31,11 +28,9 @@ from arepy_ui import (
 
 # Estado global
 ui_manager: UIManager = None  # type: ignore
-animator: Animator = None  # type: ignore
 
 # Nodos animables
 animated_boxes: list[Node] = []
-easing_labels: list[Text] = []
 
 
 def create_animated_box(color: Color, label: str) -> tuple[Node, Node]:
@@ -71,10 +66,10 @@ def create_animated_box(color: Color, label: str) -> tuple[Node, Node]:
 
 def run_all_animations():
     """Ejecuta todas las animaciones de demostración."""
-    global animator, animated_boxes, ui_manager
+    global animated_boxes, ui_manager
 
     # Limpiar animaciones previas
-    animator.animations.clear()
+    ui_manager.animator.clear()
 
     easings = [
         Easing.LINEAR,
@@ -99,24 +94,35 @@ def run_all_animations():
 
     for i, box in enumerate(animated_boxes):
         if i < len(easings):
-            # Animar posición X (usando margin.left)
-            anim = Animation(
-                target=box.style,
-                property_name="margin.left",
-                start_value=0,
-                end_value=300,
-                duration=2.0,
-                easing=easings[i],
-            )
-            animator.add(anim)
+            delay = i * 0.05
+            ui_manager.animator.create().wait(delay).to(
+                box.style,
+                "margin.left",
+                300,
+                2.0,
+                easings[i],
+            ).start()
+            ui_manager.animator.create().wait(delay).to(
+                box.style,
+                "opacity",
+                0.55,
+                0.16,
+                Easing.EASE_OUT_QUAD,
+            ).to(
+                box.style,
+                "opacity",
+                1.0,
+                0.20,
+                Easing.EASE_OUT_QUAD,
+            ).start()
 
 
 def reset_animations():
     """Resetea todas las cajas a su posición inicial."""
-    global animated_boxes, animator
+    global animated_boxes, ui_manager
 
     # Limpiar animaciones activas
-    animator.animations.clear()
+    ui_manager.animator.clear()
 
     # Resetear posiciones (usar Unit.px para crear el objeto correcto)
     for box in animated_boxes:
@@ -126,6 +132,7 @@ def reset_animations():
             bottom=Unit.px(0),
             left=Unit.px(0),
         )
+        box.style.opacity = 1.0
 
 
 def create_ui() -> Node:
@@ -257,44 +264,6 @@ def create_ui() -> Node:
     return root
 
 
-def ui_update_system(renderer: Renderer2D, input: Input, display: Display):
-    """Sistema de UPDATE."""
-    global ui_manager, animator
-
-    dt = renderer.get_delta_time()
-
-    # Actualizar animaciones
-    has_active_animations = len(animator.animations) > 0
-    animator.update(dt)
-
-    # Si hay animaciones activas, marcar el layout como dirty para que se recalcule
-    if has_active_animations:
-        ui_manager.mark_dirty()
-
-    # Actualizar UI
-    wheel_scroll = input.get_mouse_wheel_delta()
-    ui_manager.update(dt, wheel_scroll=wheel_scroll)
-
-
-def ui_render_system(renderer: Renderer2D):
-    """Sistema de RENDER_UI."""
-    global ui_manager
-    ui_manager.render()
-
-
-def setup_system(game: ArepyEngine):
-    """Sistema de configuración inicial."""
-    global ui_manager, animator
-
-    # Crear animator
-    animator = Animator()
-
-    # Crear UI usando from_engine
-    ui_manager = UIManager.from_engine(game)
-    root = create_ui()
-    ui_manager.set_root(root)
-
-
 def main():
     # Ventana resizable
     rl.SetConfigFlags(rl.FLAG_WINDOW_RESIZABLE)
@@ -304,11 +273,11 @@ def main():
         width=800,
         height=700,
     )
-    game.on_startup = lambda: setup_system(game)  # type: ignore
 
-    world: World = game.create_world("animation_demo")
-    world.add_system(SystemPipeline.UPDATE, ui_update_system)
-    world.add_system(SystemPipeline.RENDER_UI, ui_render_system)
+    world = game.create_world("animation_demo")
+
+    global ui_manager
+    ui_manager = UIManager.install(world, root=create_ui())
 
     game.set_current_world("animation_demo")
     game.run()

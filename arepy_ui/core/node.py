@@ -138,7 +138,7 @@ class Node:
         """
         Simplified layout calculation.
         """
-        self._last_layout_request = (parent_x, parent_y, parent_width, parent_height)
+        self._set_layout_request(parent_x, parent_y, parent_width, parent_height)
 
         # Optimization: If not visible, skip layout
         if not self.style.visible:
@@ -322,17 +322,42 @@ class Node:
 
             # Update child position based on flex alignment + margins
             if self.style.flex_direction == FlexDirection.COLUMN:
+                child_parent_x = start_x + cross_offset
+                child_parent_y = current_y
                 child.computed_x = start_x + cross_offset + child_margin_left
                 child.computed_y = current_y + child_margin_top
+                child._set_layout_request(
+                    child_parent_x,
+                    child_parent_y,
+                    content_width,
+                    content_height,
+                )
                 current_y += child.computed_height + self.style.gap
             else:
+                child_parent_x = current_x
+                child_parent_y = start_y + cross_offset
                 child.computed_x = current_x + child_margin_left
                 child.computed_y = start_y + cross_offset + child_margin_top
+                child._set_layout_request(
+                    child_parent_x,
+                    child_parent_y,
+                    content_width,
+                    content_height,
+                )
                 current_x += child.computed_width + self.style.gap
 
             # Recursively update grandchildren positions if the child moved
             if child.children:
                 self._propagate_position_to_children(child)
+
+    def _set_layout_request(
+        self,
+        parent_x: float,
+        parent_y: float,
+        parent_width: float,
+        parent_height: float,
+    ) -> None:
+        self._last_layout_request = (parent_x, parent_y, parent_width, parent_height)
 
     def _propagate_position_to_children(self, node: "Node"):
         """
@@ -369,44 +394,41 @@ class Node:
                 continue
             if child.style.position == PositionType.ABSOLUTE:
                 # Handle absolute children
-                margin_left = self._resolve_unit(
-                    child.style.margin.left, node.computed_width
-                )
-                margin_top = self._resolve_unit(
-                    child.style.margin.top, node.computed_height
+                margin_left = self._resolve_unit(child.style.margin.left, content_width)
+                margin_top = self._resolve_unit(child.style.margin.top, content_height)
+                child._set_layout_request(
+                    start_x, start_y, content_width, content_height
                 )
 
                 if child.style.left is not None:
-                    left = self._resolve_unit(child.style.left, node.computed_width)
-                    child.computed_x = node.computed_x + left + margin_left
+                    left = self._resolve_unit(child.style.left, content_width)
+                    child.computed_x = start_x + left + margin_left
                 elif child.style.right is not None:
-                    right = self._resolve_unit(child.style.right, node.computed_width)
+                    right = self._resolve_unit(child.style.right, content_width)
                     child.computed_x = (
-                        node.computed_x
-                        + node.computed_width
+                        start_x
+                        + content_width
                         - child.computed_width
                         - right
                         - margin_left
                     )
                 else:
-                    child.computed_x = node.computed_x + margin_left
+                    child.computed_x = start_x + margin_left
 
                 if child.style.top is not None:
-                    top = self._resolve_unit(child.style.top, node.computed_height)
-                    child.computed_y = node.computed_y + top + margin_top
+                    top = self._resolve_unit(child.style.top, content_height)
+                    child.computed_y = start_y + top + margin_top
                 elif child.style.bottom is not None:
-                    bottom = self._resolve_unit(
-                        child.style.bottom, node.computed_height
-                    )
+                    bottom = self._resolve_unit(child.style.bottom, content_height)
                     child.computed_y = (
-                        node.computed_y
-                        + node.computed_height
+                        start_y
+                        + content_height
                         - child.computed_height
                         - bottom
                         - margin_top
                     )
                 else:
-                    child.computed_y = node.computed_y + margin_top
+                    child.computed_y = start_y + margin_top
 
                 if child.children:
                     child._layout_viewport_size = node._layout_viewport_size
@@ -461,12 +483,28 @@ class Node:
                     cross_offset = (content_height - child.computed_height) / 2
 
             if node.style.flex_direction == FlexDirection.COLUMN:
+                child_parent_x = start_x + cross_offset
+                child_parent_y = current_y
                 child.computed_x = start_x + cross_offset + child_margin_left
                 child.computed_y = current_y + child_margin_top
+                child._set_layout_request(
+                    child_parent_x,
+                    child_parent_y,
+                    content_width,
+                    content_height,
+                )
                 current_y += child.computed_height + node.style.gap
             else:
+                child_parent_x = current_x
+                child_parent_y = start_y + cross_offset
                 child.computed_x = current_x + child_margin_left
                 child.computed_y = start_y + cross_offset + child_margin_top
+                child._set_layout_request(
+                    child_parent_x,
+                    child_parent_y,
+                    content_width,
+                    content_height,
+                )
                 current_x += child.computed_width + node.style.gap
 
             if child.children:
@@ -505,6 +543,15 @@ class Node:
         """
         self.computed_x += dx
         self.computed_y += dy
+
+        if self._last_layout_request is not None:
+            parent_x, parent_y, parent_width, parent_height = self._last_layout_request
+            self._last_layout_request = (
+                parent_x + dx,
+                parent_y + dy,
+                parent_width,
+                parent_height,
+            )
 
         for child in self.children:
             child.translate(dx, dy)

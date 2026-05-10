@@ -19,7 +19,7 @@ classifiers = [
 ]
 keywords = ['arepy', 'ui', 'library', 'python']
 requires-python = ">=3.11"
-dependencies = ["arepy"]
+dependencies = ["arepy==0.5.5"]
 dynamic = ['version']
 readme = "README.md"
 
@@ -98,11 +98,8 @@ before-build = "pip install cython>=3.0"
 [tool.cibuildwheel.windows]
 before-build = "pip install cython>=3.0"
 
-[tool.uv.sources]
-arepy = { git = "https://github.com/Scr44gr/arepy", rev = "40f8a4bcbdc16e6ce8af0e8232e340eff7237bf6" }
-
 [tool.uv]
-package = false
+package = true
 
 [tool.ty.environment]
 root = ["./"]

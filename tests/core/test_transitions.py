@@ -550,8 +550,11 @@ class TestSequenceRunner:
 
         # First update - still in delay
         runner.update(0.3)
-        assert runner._delay_timer == 0.3
+        assert runner._current_item_started is False
+        assert fade._elapsed == 0.0
 
         # Second update - starts item
         runner.update(0.3)
-        assert runner._delay_timer >= 0.5
+        assert runner._current_item_started is True
+        assert runner._delay_timer is None
+        assert fade._elapsed == 0.0

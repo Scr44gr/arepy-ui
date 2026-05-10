@@ -989,6 +989,36 @@ class TestNodePropagateManager:
 class TestNodePropagatePositionAbsolute:
     """Tests for _propagate_position_to_children with absolute positioning."""
 
+    def test_propagate_absolute_respects_parent_padding(self):
+        from arepy_ui.core.types import PositionType
+
+        parent = Node(
+            style=Style(
+                width=Unit.px(200),
+                height=Unit.px(200),
+                padding=Spacing.all(10),
+            )
+        )
+        child = Node(
+            style=Style(
+                width=Unit.px(50),
+                height=Unit.px(50),
+                position=PositionType.ABSOLUTE,
+                left=Unit.px(30),
+                top=Unit.px(40),
+            )
+        )
+        parent.add_child(child)
+        parent.calculate_layout(0, 0, 800, 600)
+
+        parent.computed_x = 100
+        parent.computed_y = 100
+
+        parent._propagate_position_to_children(parent)
+
+        assert child.computed_x == 140
+        assert child.computed_y == 150
+
     def test_propagate_absolute_right_position(self):
         from arepy_ui.core.types import PositionType
 
