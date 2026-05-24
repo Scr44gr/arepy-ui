@@ -5,7 +5,7 @@ from typing import Optional
 from arepy.engine.renderer import Rect
 
 from ..core.node import Node
-from ..core.style import Style
+from ..core.style import Style, merge_style_fields
 from ..core.types import Color, Unit
 from ..logging import logger
 from ..runtime import get_runtime
@@ -43,14 +43,13 @@ class Image(Node):
             border_radius=border_radius,
         )
 
-        if style:
-            # Merge styles
-            default_style.width = style.width or default_style.width
-            default_style.height = style.height or default_style.height
-            default_style.margin = style.margin
-            default_style.padding = style.padding
-            if style.border_radius > 0:
-                default_style.border_radius = style.border_radius
+        merge_style_fields(
+            default_style,
+            style,
+            ("width", "height", "margin", "padding"),
+        )
+        if style and style.border_radius > 0:
+            default_style.border_radius = style.border_radius
 
         super().__init__(style=default_style, **kwargs)
 

@@ -4,10 +4,13 @@ from arepy.engine.renderer import Rect
 from arepy.math import check_collision_point_rec
 
 from ..core.node import Node
-from ..core.style import Spacing, Style
+from ..core.style import Spacing, Style, merge_style_fields
 from ..core.types import AlignItems, Color, CursorType, JustifyContent, Unit
 from ..runtime import MOUSE_BUTTON_LEFT, get_runtime
 from .text import Text
+
+
+_BUTTON_MERGE_FIELDS = ("margin", "position", "top", "left")
 
 
 class Button(Node):
@@ -25,6 +28,7 @@ class Button(Node):
         pressed_color: Optional[Color] = None,
         pressed_scale: float = 0.98,
         style: Optional[Style] = None,
+        font_name: Optional[str] = None,
         **kwargs,
     ):
         default_style = Style(
@@ -38,23 +42,23 @@ class Button(Node):
             cursor=CursorType.POINTING_HAND,
         )
 
-        # Merge provided style if any
-        if style:
-            # Simple merge logic (could be improved)
-            default_style.margin = style.margin
-            default_style.position = style.position
-            default_style.top = style.top
-            default_style.left = style.left
-            # ... copy other props
+        if style is not None:
+            merge_style_fields(default_style, style, _BUTTON_MERGE_FIELDS)
 
         super().__init__(style=default_style, **kwargs)
 
         self.on_click = on_click
 
         # Add Text Child with specified font size
-        self.text_node = Text(text, size=font_size, color=text_color)
+        self.text_node = Text(
+            text,
+            size=font_size,
+            color=text_color,
+            font_name=font_name,
+        )
         self.text_node.pickable = False  # Text should not block button click
-        self.add_child(self.text_node)
+        self.text_node.parent = self
+        self.children.append(self.text_node)
 
         # Button states
         self.base_color = bg_color

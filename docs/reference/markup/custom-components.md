@@ -4,37 +4,53 @@ Register custom components for use in AUI markup.
 
 ## Overview
 
-You can extend AUI with your own components that can be used like built-in elements.
+You can extend AUI by registering regular arepy-ui component classes and mapping them to custom tags.
+
+The current builder support is intentionally small:
+
+- Register a component class with `register_component(...)`
+- Use the registered tag in `.aui`
+- Let the builder pass the resolved `style` and optional `id`
+- Let child nodes declared in markup be appended after construction
+
+Arbitrary markup attributes are not exposed as a generic `props` dictionary in the current runtime.
 
 ## Registering a Component
 
 ```python
-from arepy_ui.markup import register_component
-from arepy_ui import Node, Text, Style, Color, Unit
+from arepy_ui import Color, Node, Style, Unit, register_component
 
-def IconButton(props: dict) -> Node:
-    """Custom icon button component."""
-    icon = props.get("icon", "⭐")
-    label = props.get("label", "Button")
-    on_click = props.get("on_click")
-    
-    return Node(
-        style=Style(
-            flex_direction=FlexDirection.ROW,
-            gap=8,
-            padding=Spacing.xy(h=16, v=8),
-            background_color=Color(80, 80, 100),
-            border_radius=8.0,
-        ),
-        on_click=on_click,
-        children=[
-            Text(icon, size=20),
-            Text(label, size=14, color=Color(255, 255, 255)),
-        ],
+class HealthBar(Node):
+    def __init__(
+        self,
+        value: float = 100.0,
+        max_value: float = 100.0,
+        bar_color: Color = Color(0, 255, 0, 255),
+        style: Style | None = None,
+        **kwargs,
+    ):
+        merged_style = style or Style(
+            width=Unit.px(220),
+            height=Unit.px(18),
+            background_color=Color(40, 40, 50, 255),
+            border_radius=6.0,
+        )
+        super().__init__(style=merged_style, **kwargs)
+        self.value = value
+        self.max_value = max_value
+        self.bar_color = bar_color
+
+    def render(self):
+        super().render()
+        # Draw the filled bar here.
+
+
+register_component(
+    HealthBar,
+    tags=["healthbar", "health-bar"],
+    color=(255, 100, 100),
+    category="custom",
     )
-
-# Register the component
-register_component("icon-button", IconButton)
 ```
 
 ## Using in AUI
@@ -42,146 +58,76 @@ register_component("icon-button", IconButton)
 After registration, use the component in markup:
 
 ```html
-<!-- menu.aui -->
-<column class="menu">
-    <icon-button icon="🎮" label="Play" on-click="start_game" />
-    <icon-button icon="⚙️" label="Settings" on-click="open_settings" />
-    <icon-button icon="🚪" label="Quit" on-click="quit_game" />
-</column>
-```
-
-## Component Props
-
-All attributes become props:
-
-```html
-<my-component
-    title="Hello"
-    count="42"
-    enabled="true"
-    on-click="handler"
-/>
-```
-
-```python
-def MyComponent(props: dict) -> Node:
-    title = props.get("title", "Default")
-    count = int(props.get("count", 0))
-    enabled = props.get("enabled") == "true"
-    on_click = props.get("on_click")  # Function reference
-    
-    return Node(...)
-```
-
-## Component with Children
-
-Access children through `props["children"]`:
-
-```python
-def Card(props: dict) -> Node:
-    """Card container with title."""
-    title = props.get("title", "Card")
-    children = props.get("children", [])
-    
-    return Node(
-        style=Style(
-            background_color=Color(40, 40, 55),
-            border_radius=12.0,
-            padding=Spacing.all(16),
-            flex_direction=FlexDirection.COLUMN,
-            gap=12,
-        ),
-        children=[
-            Text(title, size=18, color=Color(255, 255, 255)),
-            *children,  # Insert child elements
-        ],
-    )
-
-register_component("card", Card)
-```
-
-Usage:
-
-```html
-<card title="Player Stats">
-    <text>Health: 100</text>
-    <text>Mana: 50</text>
-</card>
-```
-
-## Complete Example: StatusBar
-
-```python
-from arepy_ui.markup import register_component
-from arepy_ui import Node, Text, Style, Color, Unit
-from arepy_ui.components import ProgressBar
-from arepy_ui.core.types import FlexDirection, AlignItems
-
-def StatusBar(props: dict) -> Node:
-    """Health/mana bar with icon and value."""
-    icon = props.get("icon", "❤️")
-    value = float(props.get("value", 100))
-    max_value = float(props.get("max", 100))
-    color = props.get("color", "#ff4444")
-    
-    # Parse hex color
-    hex_val = color.lstrip("#")
-    r, g, b = [int(hex_val[i:i+2], 16) for i in (0, 2, 4)]
-    bar_color = Color(r, g, b)
-    
-    return Node(
-        style=Style(
-            flex_direction=FlexDirection.ROW,
-            align_items=AlignItems.CENTER,
-            gap=8,
-            width=Unit.px(200),
-        ),
-        children=[
-            Text(icon, size=20),
-            ProgressBar(
-                value=value,
-                max_value=max_value,
-                style=Style(
-                    flex=1,
-                    height=Unit.px(12),
-                ),
-                fill_color=bar_color,
-            ),
-            Text(f"{int(value)}", size=12, color=Color(200, 200, 200)),
-        ],
-    )
-
-register_component("status-bar", StatusBar)
-```
-
-Usage in AUI:
-
-```html
 <column class="hud">
-    <status-bar icon="❤️" value="{health}" max="100" color="#ff4444" />
-    <status-bar icon="💧" value="{mana}" max="80" color="#4488ff" />
-    <status-bar icon="⚡" value="{stamina}" max="100" color="#44ff44" />
+    <healthbar id="player-health" />
 </column>
 ```
+
+## What Markup Passes Today
+
+For registered custom tags, the builder currently does this:
+
+- resolves ACSS and inline styles into the `style` kwarg
+- forwards the element `id` when present
+- instantiates the registered class
+- appends declared child elements after the instance is created
+
+That means this works well for components that behave like normal `Node` subclasses and can be configured by style plus any values you set in Python after loading.
+
+```python
+result = load_aui("hud.aui")
+if result.success and result.root is not None:
+    health_bar = result.root.find_by_id("player-health")
+    if isinstance(health_bar, HealthBar):
+        health_bar.value = 75
+        health_bar.max_value = 100
+```
+
+## Child Content
+
+Child markup is still useful, because the builder attaches child nodes after the custom component instance is created:
+
+```html
+<container class="panel">
+    <healthbar id="boss-health">
+        <text>Boss</text>
+    </healthbar>
+</container>
+```
+
+```python
+class Panel(Node):
+    pass
+
+
+register_component(Panel, tags=["panel"])
+```
+
+## Current Limitation
+
+Do not rely on arbitrary markup attributes being converted into constructor kwargs for custom tags. Examples like `value="75"`, `max-value="100"`, or a generic `props` dictionary are not aligned with the current builder implementation.
+
+If you need data-driven custom components today, use one of these approaches:
+
+- configure the component after `load_aui()` by finding it with `id`
+- express styling through ACSS and inline styles
+- use built-in tags whose attributes are explicitly supported by the markup builder
 
 ## Registration API
 
 ```python
-from arepy_ui.markup import (
-    register_component,
-    unregister_component,
-    get_registered_components,
+from arepy_ui import get_registry, register_component
+
+register_component(
+    HealthBar,
+    name="HealthBar",
+    tags=["healthbar", "health-bar"],
+    color=(255, 100, 100),
+    category="custom",
 )
 
-# Register
-register_component("my-widget", MyWidgetFunction)
-
-# Unregister
-unregister_component("my-widget")
-
-# List all registered
-components = get_registered_components()
-print(components)  # ["icon-button", "card", "status-bar", ...]
+registry = get_registry()
+print(registry.get_valid_tags())
 ```
 
 ## Tips
@@ -189,20 +135,18 @@ print(components)  # ["icon-button", "card", "status-bar", ...]
 !!! tip "Naming Convention"
     Use kebab-case for custom component names: `my-component`, `status-bar`.
 
-!!! tip "Props Validation"
-    Add defaults and type conversion in your component function.
+!!! tip "Constructor Contract"
+    Keep custom components compatible with normal arepy-ui construction: accept `style`, optional `id`, and `**kwargs`.
 
 !!! tip "Reusable Components"
     Create a `components.py` file to register all your custom components at startup.
 
 ```python
 # components.py
-from arepy_ui.markup import register_component
+from arepy_ui import register_component
 
 def register_all():
-    register_component("icon-button", IconButton)
-    register_component("card", Card)
-    register_component("status-bar", StatusBar)
+    register_component(HealthBar, tags=["healthbar", "health-bar"])
 
 # main.py
 from components import register_all

@@ -270,3 +270,24 @@ class TestGlobalStyleRegistry:
         styles = gs.resolve_for_class("item")
 
         assert styles.get("color") == "light"
+
+    def test_multiple_global_stylesheets_merge_variables(self):
+        load_globals_string(
+            """
+            :root { --base: #111111; }
+            .panel { background: var(--base); }
+            """
+        )
+        load_globals_string(
+            """
+            :root { --accent: #ff0000; }
+            .badge { color: var(--accent); }
+            """
+        )
+
+        gs = get_global_styles()
+
+        assert gs.get_variable("base") == "#111111"
+        assert gs.get_variable("accent") == "#ff0000"
+        assert gs.resolve_for_class("panel").get("background") == "#111111"
+        assert gs.resolve_for_class("badge").get("color") == "#ff0000"

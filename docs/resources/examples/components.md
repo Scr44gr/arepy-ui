@@ -2,9 +2,6 @@
 
 Interactive demo showcasing all arepy-ui components.
 
-<!-- TODO: Add component demo GIF -->
-![Components Demo](../../assets/examples/components-demo.gif)
-
 ## Overview
 
 This example demonstrates all available components in action.
@@ -156,8 +153,8 @@ def on_select_change(value):
     select_value = value
     print(f"Selected: {value}")
 
-def update():
-    ui_manager.update()
+def update(game: ArepyEngine):
+    ui_manager.update(game.get_delta_time())
 
 def draw():
     ui_manager.render()

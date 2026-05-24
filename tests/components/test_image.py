@@ -115,12 +115,19 @@ class TestImage:
     def test_image_with_style(self):
         """Test creating an Image with custom style."""
         from arepy_ui.components.image import Image
-        from arepy_ui.core.style import Style
+        from arepy_ui.core.style import Spacing, Style
+        from arepy_ui.core.types import Unit
 
-        style = Style(border_radius=8.0)
+        style = Style(
+            width=Unit.px(180),
+            padding=Spacing.all(6),
+            border_radius=8.0,
+        )
         image = Image(source="test.png", style=style)
 
         assert image.style.border_radius == 8.0
+        assert image.style.width.value == 180
+        assert image.style.padding.top.value == 6
 
     def test_image_border_radius(self):
         """Test Image with border radius."""

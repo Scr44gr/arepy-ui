@@ -4,6 +4,8 @@ AUI Loader - Main API for loading AUI markup files.
 
 from __future__ import annotations
 
+from collections import OrderedDict
+from dataclasses import dataclass
 import os
 import re
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
@@ -20,6 +22,152 @@ from arepy_ui.registry import get_registry
 
 if TYPE_CHECKING:
     from arepy_ui.core.node import Node
+    from arepy_ui.markup.parsers import AUINode, StyleSheet
+
+
+@dataclass(slots=True)
+class _AUIFileCacheEntry:
+    mtime_ns: int
+    size: int
+    root_node: AUINode | None
+    parser_errors: tuple[str, ...]
+
+
+@dataclass(slots=True)
+class _ACSSFileCacheEntry:
+    mtime_ns: int
+    size: int
+    stylesheet: StyleSheet
+
+
+@dataclass(slots=True)
+class _AUIStringCacheEntry:
+    root_node: AUINode | None
+    parser_errors: tuple[str, ...]
+
+
+_MAX_AUI_FILE_CACHE_ENTRIES = 64
+_MAX_ACSS_FILE_CACHE_ENTRIES = 64
+_MAX_AUI_STRING_CACHE_ENTRIES = 64
+_MAX_INLINE_STYLESHEET_CACHE_ENTRIES = 64
+
+_AUI_FILE_CACHE: OrderedDict[str, _AUIFileCacheEntry] = OrderedDict()
+_ACSS_FILE_CACHE: OrderedDict[str, _ACSSFileCacheEntry] = OrderedDict()
+_AUI_STRING_CACHE: OrderedDict[str, _AUIStringCacheEntry] = OrderedDict()
+_INLINE_STYLESHEET_CACHE: OrderedDict[str, StyleSheet] = OrderedDict()
+
+
+def _cache_get[K, V](cache: OrderedDict[K, V], key: K) -> Optional[V]:
+    value = cache.get(key)
+    if value is None:
+        return None
+    cache.move_to_end(key)
+    return value
+
+
+def _cache_put[K, V](
+    cache: OrderedDict[K, V], key: K, value: V, max_entries: int
+) -> None:
+    cache[key] = value
+    cache.move_to_end(key)
+    if len(cache) > max_entries:
+        cache.popitem(last=False)
+
+
+def _normalize_path(path: str) -> str:
+    return os.path.abspath(path)
+
+
+def _clear_load_caches() -> None:
+    """Clear cached parsed markup and stylesheet artifacts."""
+    _AUI_FILE_CACHE.clear()
+    _ACSS_FILE_CACHE.clear()
+    _AUI_STRING_CACHE.clear()
+    _INLINE_STYLESHEET_CACHE.clear()
+
+
+def _load_cached_aui_file(path: str) -> tuple[AUINode | None, list[str]]:
+    normalized_path = _normalize_path(path)
+    stat = os.stat(normalized_path)
+    cached = _cache_get(_AUI_FILE_CACHE, normalized_path)
+    if (
+        cached is not None
+        and cached.mtime_ns == stat.st_mtime_ns
+        and cached.size == stat.st_size
+    ):
+        return cached.root_node, list(cached.parser_errors)
+
+    root_node, parser_errors = parse_aui_file(normalized_path)
+    _cache_put(
+        _AUI_FILE_CACHE,
+        normalized_path,
+        _AUIFileCacheEntry(
+            mtime_ns=stat.st_mtime_ns,
+            size=stat.st_size,
+            root_node=root_node,
+            parser_errors=tuple(parser_errors),
+        ),
+        _MAX_AUI_FILE_CACHE_ENTRIES,
+    )
+    return root_node, list(parser_errors)
+
+
+def _load_cached_acss_file(path: str) -> StyleSheet:
+    normalized_path = _normalize_path(path)
+    stat = os.stat(normalized_path)
+    cached = _cache_get(_ACSS_FILE_CACHE, normalized_path)
+    if (
+        cached is not None
+        and cached.mtime_ns == stat.st_mtime_ns
+        and cached.size == stat.st_size
+    ):
+        return cached.stylesheet
+
+    stylesheet = parse_acss_file(normalized_path)
+    _cache_put(
+        _ACSS_FILE_CACHE,
+        normalized_path,
+        _ACSSFileCacheEntry(
+            mtime_ns=stat.st_mtime_ns,
+            size=stat.st_size,
+            stylesheet=stylesheet,
+        ),
+        _MAX_ACSS_FILE_CACHE_ENTRIES,
+    )
+    return stylesheet
+
+
+def _load_cached_aui_string(content: str) -> tuple[AUINode | None, list[str]]:
+    cached = _cache_get(_AUI_STRING_CACHE, content)
+    if cached is not None:
+        return cached.root_node, list(cached.parser_errors)
+
+    root_node, parser_errors = parse_aui(content)
+    _cache_put(
+        _AUI_STRING_CACHE,
+        content,
+        _AUIStringCacheEntry(
+            root_node=root_node,
+            parser_errors=tuple(parser_errors),
+        ),
+        _MAX_AUI_STRING_CACHE_ENTRIES,
+    )
+    return root_node, list(parser_errors)
+
+
+def _load_cached_inline_stylesheet(content: str) -> StyleSheet:
+    cached = _cache_get(_INLINE_STYLESHEET_CACHE, content)
+    if cached is not None:
+        return cached
+
+    stylesheet = parse_acss(content)
+    _cache_put(
+        _INLINE_STYLESHEET_CACHE,
+        content,
+        stylesheet,
+        _MAX_INLINE_STYLESHEET_CACHE_ENTRIES,
+    )
+    return stylesheet
 
 
 def _get_components() -> Dict[str, type]:
@@ -76,7 +224,7 @@ def load_aui(
     components = _get_components()
     errors = ErrorCollector()
 
-    root_node, parser_errors = parse_aui_file(path)
+    root_node, parser_errors = _load_cached_aui_file(path)
 
     if parser_errors:
         for err in _convert_parser_errors(parser_errors):
@@ -88,11 +236,11 @@ def load_aui(
 
     css = None
     if stylesheet:
-        css = parse_acss_file(stylesheet)
+        css = _load_cached_acss_file(stylesheet)
     else:
         acss_path = os.path.splitext(path)[0] + ".acss"
         if os.path.exists(acss_path):
-            css = parse_acss_file(acss_path)
+            css = _load_cached_acss_file(acss_path)
 
     component = build_component(root_node, css, handlers, components, errors)
 
@@ -130,7 +278,7 @@ def load_aui_string(
     components = _get_components()
     errors = ErrorCollector()
 
-    root_node, parser_errors = parse_aui(content)
+    root_node, parser_errors = _load_cached_aui_string(content)
 
     if parser_errors:
         for err in _convert_parser_errors(parser_errors):
@@ -145,7 +293,7 @@ def load_aui_string(
         if isinstance(stylesheet, StyleSheet):
             css = stylesheet
         else:
-            css = parse_acss(stylesheet)
+            css = _load_cached_inline_stylesheet(stylesheet)
 
     component = build_component(root_node, css, handlers, components, errors)
 

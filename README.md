@@ -40,7 +40,7 @@ Key features:
 * **Declarative Markup**: Build UIs with HTML-like `.aui` files and CSS-like `.acss` stylesheets.
 * **Theme Support**: CSS variables with light/dark theme variants.
 * **Drag & Drop**: Built-in drag and drop system.
-* **Animations**: Tweening system with easing functions.
+* **Animations**: Sequenced animator and timers with easing functions.
 * **High Performance**: Cython-accelerated parsing and optimized rendering.
 
 ## Installation
@@ -49,7 +49,9 @@ Key features:
 pip install arepy-ui
 ```
 
-With markup system acceleration:
+The compiled acceleration modules are included in the default installation when a wheel is available or when building from source.
+
+For a local source workflow where you want the build dependencies available explicitly:
 
 ```bash
 pip install arepy-ui[markup]
@@ -60,17 +62,16 @@ pip install arepy-ui[markup]
 ### Python API
 
 ```python
-from arepy import ArepyEngine, SystemPipeline
+from arepy import ArepyEngine
 from arepy_ui import UIManager, Node, Text, Button, Style, Color, Unit, JustifyContent, AlignItems
 
-ui_manager: UIManager = None
+if __name__ == "__main__":
+    game = ArepyEngine(title="My Game", width=800, height=600)
+    world = game.create_world("main")
 
-def setup(game: ArepyEngine):
-    global ui_manager
-    ui_manager = UIManager.from_engine(game)
-    
-    ui_manager.set_root(
-        Node(
+    UIManager.install(
+        world,
+        root=Node(
             style=Style(
                 width=Unit.percent(100),
                 height=Unit.percent(100),
@@ -79,24 +80,12 @@ def setup(game: ArepyEngine):
                 gap=20,
             ),
             children=[
-                Text("Hello, arepy-ui!", font_size=32, color=Color(255, 255, 255)),
+                Text("Hello, arepy-ui!", size=32, color=Color(255, 255, 255)),
                 Button("Click me", on_click=lambda: print("Clicked!")),
             ],
-        )
+        ),
     )
 
-def update(game: ArepyEngine):
-    ui_manager.update(game.get_delta_time())
-
-def render(game: ArepyEngine):
-    ui_manager.render()
-
-if __name__ == "__main__":
-    game = ArepyEngine(title="My Game", width=800, height=600)
-    world = game.create_world("main")
-    world.add_startup_system(setup)
-    world.add_system(SystemPipeline.UPDATE, update)
-    world.add_system(SystemPipeline.RENDER, render)
     game.set_current_world("main")
     game.run()
 ```
@@ -147,7 +136,12 @@ from arepy_ui.markup import load_aui
 
 handlers = {"greet": lambda: print("Hello!")}
 result = load_aui("ui.aui", handlers=handlers)
-ui_manager.set_root(result.root)
+
+if result.success and result.root is not None:
+    ui_manager.set_root(result.root)
+else:
+    for error in result.errors:
+        print(error)
 ```
 
 ## Components
@@ -287,18 +281,19 @@ uv run examples/markup_demo/main.py
 
 ## Performance
 
-The markup parser is **Cython-accelerated** for maximum performance:
+arepy-ui ships with compiled acceleration for the markup parsers, layout code, and selected hot paths.
+
+You do not need a separate runtime step to enable it after installation. When installing from source, setuptools builds the extensions as part of the package build.
+
+For local development environments that rebuild extensions from source, ensure the markup build dependency is installed:
 
 ```bash
 pip install arepy-ui[markup]
-python -m arepy_ui.markup.build_ext
 ```
-
-Falls back to pure Python automatically if Cython isn't available.
 
 ## Requirements
 
-* Python 3.10+
+* Python 3.11+
 * [Arepy](https://github.com/Scr44gr/arepy) game engine
 * numpy (for ColorPicker gradients)
 

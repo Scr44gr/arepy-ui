@@ -2,9 +2,6 @@
 
 Complete drag and drop implementation.
 
-<!-- TODO: Add drag drop GIF -->
-![Drag Drop Demo](../../assets/examples/drag-drop-demo.gif)
-
 ## Overview
 
 This example shows how to build a complete drag and drop system.
@@ -12,7 +9,7 @@ This example shows how to build a complete drag and drop system.
 ## Run the Demo
 
 ```bash
-uv run examples/demo_drag_drop.py
+uv run examples/demo_drag.py
 ```
 
 ## Source Code
@@ -20,7 +17,7 @@ uv run examples/demo_drag_drop.py
 ```python
 """Drag and drop demo."""
 from arepy import ArepyEngine, SystemPipeline
-from arepy_ui import UIManager, Node, Text, Style, Color, Unit
+from arepy_ui import UIConfig, UIManager, Node, Text, Style, Color, Unit
 from arepy_ui.components import Draggable, DropZone
 from arepy_ui.core.types import FlexDirection, JustifyContent, AlignItems
 from arepy_ui.core.style import Spacing
@@ -55,9 +52,9 @@ def create_ui():
                 # Two columns
                 Node(
                     style=Style(
+                        width=Unit.percent(100),
                         flex_direction=FlexDirection.ROW,
                         gap=40,
-                        flex=1,
                     ),
                     children=[
                         Column("Left", left_items, "left"),
@@ -92,19 +89,17 @@ def Column(title: str, items: list, column_id: str) -> Node:
 def DraggableItem(text: str, source: str) -> Node:
     return Draggable(
         data={"text": text, "source": source},
-        children=[
-            Node(
-                style=Style(
-                    width=Unit.percent(100),
-                    padding=Spacing.xy(h=12, v=8),
-                    background_color=Color(70, 70, 90),
-                    border_radius=6.0,
-                ),
-                children=[
-                    Text(text, size=14, color=Color(220, 220, 230)),
-                ],
+        content=Node(
+            style=Style(
+                width=Unit.percent(100),
+                padding=Spacing.symmetric(8, 12),
+                background_color=Color(70, 70, 90),
+                border_radius=6.0,
             ),
-        ],
+            children=[
+                Text(text, size=14, color=Color(220, 220, 230)),
+            ],
+        ),
     )
 
 def on_drop(target: str, data: dict):
@@ -128,8 +123,8 @@ def on_drop(target: str, data: dict):
     # Rebuild UI
     create_ui()
 
-def update():
-    ui_manager.update()
+def update(game: ArepyEngine):
+    ui_manager.update(game.get_delta_time())
 
 def draw():
     ui_manager.render()

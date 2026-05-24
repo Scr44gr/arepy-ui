@@ -47,6 +47,17 @@ theme:
 
 plugins:
   - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            heading_level: 2
+            members_order: source
+            show_root_heading: true
+            show_root_toc_entry: false
+            show_source: false
+            show_signature_annotations: true
   - offline
   - glightbox:
       touchNavigation: true
@@ -127,7 +138,6 @@ nav:
       - Creating an Inventory: learn/tutorials/inventory.md
       - Theme Switching: learn/tutorials/theming.md
   
-  # REFERENCE - Component Library (Chakra-style)
   - Reference:
     - reference/index.md
     - Components:
@@ -171,7 +181,7 @@ nav:
       - reference/api/index.md
       - UIManager: reference/api/uimanager.md
       - UIDebugger: reference/api/debugger.md
-      - Animations: reference/api/animations.md
+      - Animations and Transitions: reference/api/animations.md
   
   # RESOURCES - Examples & Tools
   - Resources:
@@ -188,6 +198,7 @@ nav:
   # ABOUT
   - About:
     - about/index.md
+    - Roadmap: about/roadmap.md
     - Contributing: about/contributing.md
     - Changelog: about/changelog.md
     - License: about/license.md

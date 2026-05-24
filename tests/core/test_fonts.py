@@ -180,3 +180,127 @@ class TestFontManager:
         font = manager.get_font("my_font")
 
         assert font is not None
+
+    def test_measure_text_ex_uses_cache(self):
+        """Repeated measurements with the same key should hit the in-memory cache."""
+        from arepy_ui.core.fonts import FontManager
+
+        manager = FontManager()
+        self.mock_renderer.measure_text_ex.return_value = (120.0, 24.0)
+        self.mock_renderer.get_font_default.return_value = MagicMock()
+
+        first = manager.measure_text_ex("Hello cache", 18.0)
+        second = manager.measure_text_ex("Hello cache", 18.0)
+
+        assert first.width == second.width
+        assert self.mock_renderer.measure_text_ex.call_count == 1
+
+    def test_font_manager_load_multiple_fonts(self):
+        """Batch loading should load all requests and return their names."""
+        from arepy_ui.core.fonts import FontLoadRequest, FontManager
+
+        manager = FontManager()
+        requests = [
+            FontLoadRequest(name="title", path="fonts/title.ttf", base_size=48),
+            FontLoadRequest(
+                name="body",
+                path="fonts/body.ttf",
+                base_size=24,
+                set_as_default=True,
+            ),
+            FontLoadRequest(name="mono", path="fonts/mono.ttf", base_size=16),
+        ]
+
+        loaded = manager.load_fonts(requests)
+
+        assert loaded == ["title", "body", "mono"]
+        assert set(manager._fonts.keys()) == {"title", "body", "mono"}
+        assert manager._default_font_name == "body"
+        assert self.mock_renderer.load_font_ex.call_count == 3
+
+    def test_font_manager_batch_load_preserves_unaffected_measurement_cache(self):
+        """Batch loading should preserve cached default metrics when the default font is unchanged."""
+        from arepy_ui.core.fonts import FontLoadRequest, FontManager, TextMetrics
+
+        manager = FontManager()
+        manager._measurement_cache[("__default__", "Hello", 16.0, 1.0)] = TextMetrics(
+            width=100.0,
+            height=20.0,
+            line_height=20.0,
+        )
+
+        manager.load_fonts(
+            [
+                FontLoadRequest(name="title", path="fonts/title.ttf", base_size=48),
+                FontLoadRequest(name="body", path="fonts/body.ttf", base_size=24),
+            ]
+        )
+
+        assert ("__default__", "Hello", 16.0, 1.0) in manager._measurement_cache
+
+    def test_font_manager_batch_load_invalidates_default_cache_when_default_changes(
+        self,
+    ):
+        """Changing the default font in a batch should invalidate default-font measurements."""
+        from arepy_ui.core.fonts import FontLoadRequest, FontManager, TextMetrics
+
+        manager = FontManager()
+        manager._measurement_cache[("__default__", "Hello", 16.0, 1.0)] = TextMetrics(
+            width=100.0,
+            height=20.0,
+            line_height=20.0,
+        )
+
+        manager.load_fonts(
+            [
+                FontLoadRequest(
+                    name="body",
+                    path="fonts/body.ttf",
+                    base_size=24,
+                    set_as_default=True,
+                ),
+            ]
+        )
+
+        assert ("__default__", "Hello", 16.0, 1.0) not in manager._measurement_cache
+
+    def test_font_manager_load_font_with_glyph_subset(self):
+        """Glyph subsets should be forwarded to the renderer as codepoints."""
+        from arepy_ui.core.fonts import FontManager
+
+        manager = FontManager()
+        manager.load_font("score", "fonts/score.ttf", glyphs="SCORE: 0123456789")
+
+        glyph_codes = self.mock_renderer.load_font_ex.call_args.args[2]
+        assert ord("S") in glyph_codes
+        assert ord("0") in glyph_codes
+        assert len(glyph_codes) < len(range(32, 127))
+
+    def test_font_manager_unload_font(self):
+        """Unloading a single font should remove it and return True."""
+        from arepy_ui.core.fonts import FontManager
+
+        manager = FontManager()
+        manager.load_font("hud", "fonts/hud.ttf", set_as_default=True)
+
+        unloaded = manager.unload_font("hud")
+
+        assert unloaded is True
+        assert "hud" not in manager._fonts
+        assert manager._default_font_name is None
+        self.mock_renderer.unload_font.assert_called_once()
+
+    def test_font_manager_unload_fonts(self):
+        """Batch unload should remove all known names and ignore unknown ones."""
+        from arepy_ui.core.fonts import FontManager
+
+        manager = FontManager()
+        manager.load_font("title", "fonts/title.ttf")
+        manager.load_font("body", "fonts/body.ttf", set_as_default=True)
+
+        unloaded = manager.unload_fonts(["title", "body", "missing"])
+
+        assert unloaded == ["title", "body"]
+        assert manager._fonts == {}
+        assert manager._default_font_name is None
+        assert self.mock_renderer.unload_font.call_count == 2

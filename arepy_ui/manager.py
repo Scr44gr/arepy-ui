@@ -1,13 +1,25 @@
 import os
 from typing import TYPE_CHECKING, Callable, List, Optional
 
+from arepy import TextureFilter
+from arepy.asset_store.asset_store import AssetStore
+from arepy.ecs.systems import SystemPipeline
+from arepy.ecs.world import World
+from arepy.engine.audio import AudioDevice
+from arepy.engine.display import Display
+from arepy.engine.input import Input, Key
+from arepy.engine.renderer.renderer_2d import Renderer2D
+from arepy.engine.time import Time
+
+from .components.scroll import ScrollView
 from .config import ResizeMode, ScaleTransform, UIConfig, calculate_scale_transform
 from .core.animation import Animator
 from .core.fonts import get_font_manager
 from .core.node import Node
+from .core.timers import Timer, Timers
 from .core.types import Color, CursorType, Vector2
+from .debug import UIDebugger
 from .runtime import MouseButton, configure_runtime, get_runtime
-from arepy import TextureFilter
 
 if TYPE_CHECKING:
     from arepy import ArepyEngine
@@ -26,12 +38,23 @@ def clear_overlays():
     _overlay_renders.clear()
 
 
+def _world_update_system(ui_manager: "UIManager", time: Time, input: Input) -> None:
+    """Update system registered by UIManager.install()."""
+    ui_manager.update_system(time, input)
+
+
+def _world_render_system(ui_manager: "UIManager") -> None:
+    """Render system registered by UIManager.install()."""
+    ui_manager.render_system()
+
+
 class UIManager:
     """Main UI manager that handles layout, input, and rendering."""
 
     def __init__(self, config: Optional[UIConfig] = None):
         self.root: Optional[Node] = None
         self.animator = Animator()
+        self.timers = Timers()
         self.config = config or UIConfig()
 
         runtime = get_runtime()
@@ -46,14 +69,14 @@ class UIManager:
         self.screen_width = width
         self.screen_height = height
         self.is_dirty = True
+        self._dirty_layout_root: Optional[Node] = None
         self.is_input_captured = False
 
         # Scale transform for non-responsive modes
         self.scale_transform = ScaleTransform()
 
         # Debounce timer
-        self._resize_debounce_timer = 0.0
-        self._pending_resize = False
+        self._resize_timer: Optional[Timer] = None
 
         # Cursor management
         self._current_cursor = CursorType.DEFAULT
@@ -62,7 +85,7 @@ class UIManager:
         # Tooltip system
         self._tooltip_text: Optional[str] = None
         self._tooltip_delay = 0.5  # seconds before showing
-        self._tooltip_timer = 0.0
+        self._tooltip_timer_handle: Optional[Timer] = None
         self._tooltip_visible = False
         self._tooltip_pos = Vector2(0, 0)
 
@@ -80,7 +103,10 @@ class UIManager:
         # This value is used by `set_font_scale` to scale nodes that expose a `font_size`.
         self._font_scale: float = 1.0
 
-
+        # Integrated debugger
+        self.debugger = UIDebugger()
+        self.debugger.enabled = self.config.debug_enabled
+        self._sync_debugger_hotkey_labels()
 
     @classmethod
     def from_engine(
@@ -102,6 +128,10 @@ class UIManager:
         Example:
             ui_manager = UIManager.from_engine(game)
             ui_manager.set_root(create_ui())
+
+        For world-based setups, prefer UIManager.install(world, ...) so the
+        manager is configured, registered as a world resource, and hooked into
+        the update/render pipelines in one call.
         """
         # Configure the runtime with engine components
         configure_runtime(
@@ -113,6 +143,55 @@ class UIManager:
         )
 
         return cls(config=config)
+
+    @classmethod
+    def from_world(cls, world: World, config: Optional[UIConfig] = None) -> "UIManager":
+        """Create a UIManager from an arepy World and configure runtime services."""
+        try:
+            renderer = world.get_resource(Renderer2D)
+            input_device = world.get_resource(Input)
+            display = world.get_resource(Display)
+        except KeyError as exc:
+            raise RuntimeError(
+                "UIManager.from_world() requires a World created by ArepyEngine with Renderer2D, Input, and Display resources."
+            ) from exc
+
+        try:
+            asset_store = world.get_resource(AssetStore)
+        except KeyError:
+            asset_store = None
+
+        try:
+            audio_device = world.get_resource(AudioDevice)
+        except KeyError:
+            audio_device = None
+
+        configure_runtime(
+            renderer=renderer,
+            input=input_device,
+            display=display,
+            asset_store=asset_store,
+            audio_device=audio_device,
+        )
+        return cls(config=config)
+
+    @classmethod
+    def install(
+        cls,
+        world: World,
+        root: Optional[Node] = None,
+        config: Optional[UIConfig] = None,
+    ) -> "UIManager":
+        """Create, register, and hook a UIManager into a world's UI pipelines."""
+        manager = cls.from_world(world, config=config)
+        world.add_resource(manager)
+
+        if root is not None:
+            manager.set_root(root)
+
+        world.add_system(SystemPipeline.UPDATE, _world_update_system)
+        world.add_system(SystemPipeline.RENDER_UI, _world_render_system)
+        return manager
 
     def _ensure_stencil(self):
         """Initialize stencil buffer if not already done."""
@@ -223,13 +302,82 @@ class UIManager:
                 # Continue despite failures on particular children
                 pass
 
+    def get_debugger(self) -> UIDebugger:
+        """Return the integrated UI debugger instance."""
+        return self.debugger
+
+    def enable_debug_overlay(self, enabled: bool = True) -> None:
+        self.debugger.enabled = enabled
+        self.config.debug_enabled = enabled
+
+    def toggle_debug_overlay(self) -> None:
+        self.debugger.toggle()
+        self.config.debug_enabled = self.debugger.enabled
+
+    def set_debug_toggle_key(self, key: Optional[Key]) -> None:
+        self.config.debug_toggle_key = key
+        self._sync_debugger_hotkey_labels()
+
+    def set_debug_hotkeys(
+        self,
+        toggle: Optional[Key] = None,
+        bounds: Optional[Key] = None,
+        padding: Optional[Key] = None,
+        tree: Optional[Key] = None,
+    ) -> None:
+        self.config.debug_toggle_key = toggle
+        self.config.debug_bounds_key = bounds
+        self.config.debug_padding_key = padding
+        self.config.debug_tree_key = tree
+        self._sync_debugger_hotkey_labels()
+
+    def _format_debug_key_label(self, key: Optional[Key]) -> str:
+        return getattr(key, "name", "OFF") if key is not None else "OFF"
+
+    def _sync_debugger_hotkey_labels(self) -> None:
+        self.debugger.set_hotkey_labels(
+            toggle=self._format_debug_key_label(self.config.debug_toggle_key),
+            bounds=self._format_debug_key_label(self.config.debug_bounds_key),
+            padding=self._format_debug_key_label(self.config.debug_padding_key),
+            tree=self._format_debug_key_label(self.config.debug_tree_key),
+        )
+
+    def _handle_debug_shortcuts(self, runtime) -> None:
+        toggle_key = self.config.debug_toggle_key
+        if toggle_key is not None and runtime.input.is_key_pressed(toggle_key):
+            self.toggle_debug_overlay()
+
+        if not self.debugger.enabled:
+            return
+
+        bounds_key = self.config.debug_bounds_key
+        if bounds_key is not None and runtime.input.is_key_pressed(bounds_key):
+            self.debugger.toggle_bounds()
+
+        padding_key = self.config.debug_padding_key
+        if padding_key is not None and runtime.input.is_key_pressed(padding_key):
+            self.debugger.toggle_padding()
+
+        tree_key = self.config.debug_tree_key
+        if tree_key is not None and runtime.input.is_key_pressed(tree_key):
+            self.debugger.toggle_tree()
+
     def set_root(self, node: Node):
         self.root = node
         self.is_dirty = True
+        self._dirty_layout_root = node
         if self.root:
             self._propagate_manager(self.root)
             # Calculate layout immediately to avoid 1-frame glitch
             self._recalculate_layout()
+
+    def update_system(self, time: Time, input: Input) -> None:
+        """World system adapter that updates the UI manager from injected resources."""
+        self.update(time.delta_seconds, wheel_scroll=input.get_mouse_wheel_delta())
+
+    def render_system(self) -> None:
+        """World system adapter that renders the current UI tree."""
+        self.render()
 
     def _propagate_manager(self, node: Node):
         """Recursively set manager reference on all nodes."""
@@ -269,6 +417,48 @@ class UIManager:
 
     def mark_dirty(self):
         self.is_dirty = True
+        self._dirty_layout_root = self.root
+
+    def _find_common_ancestor(self, first: Node, second: Node) -> Optional[Node]:
+        ancestors = set()
+        current: Optional[Node] = first
+        while current is not None:
+            ancestors.add(current)
+            current = current.parent
+
+        current = second
+        while current is not None:
+            if current in ancestors:
+                return current
+            current = current.parent
+        return None
+
+    def mark_dirty_node(self, node: Optional[Node]):
+        self.is_dirty = True
+
+        if self.root is None:
+            self._dirty_layout_root = None
+            return
+
+        if node is None:
+            self._dirty_layout_root = self.root
+            return
+
+        if self._dirty_layout_root is None:
+            self._dirty_layout_root = node
+            return
+
+        current_root = self._dirty_layout_root
+        if current_root is self.root or node is self.root:
+            self._dirty_layout_root = self.root
+        elif current_root.is_ancestor_of(node):
+            return
+        elif node.is_ancestor_of(current_root):
+            self._dirty_layout_root = node
+        else:
+            self._dirty_layout_root = (
+                self._find_common_ancestor(current_root, node) or self.root
+            )
 
     def update(self, dt: float, wheel_scroll: float = 0.0):
         # Clear overlays from previous frame
@@ -279,6 +469,7 @@ class UIManager:
 
         # Handle Input
         runtime = get_runtime()
+        self._handle_debug_shortcuts(runtime)
 
         # Get mouse position, converting from screen to UI coords if needed
         raw_mx, raw_my = runtime.input.get_mouse_position()
@@ -352,7 +543,7 @@ class UIManager:
             self._update_cursor(mouse_pos)
 
         # Update tooltip
-        self._update_tooltip(mouse_pos, dt)
+        self._update_tooltip(mouse_pos)
 
         # Check for window resize
         current_w, current_h = runtime.display.get_window_size()
@@ -372,27 +563,41 @@ class UIManager:
 
             # Handle debounce
             if self.config.layout_debounce_ms > 0:
-                self._resize_debounce_timer = self.config.layout_debounce_ms / 1000.0
-                self._pending_resize = True
+                self._schedule_resize_debounce()
             else:
+                self._cancel_resize_timer()
                 self._handle_resize()
 
-        # Process debounced resize
-        if self._pending_resize:
-            self._resize_debounce_timer -= dt
-            if self._resize_debounce_timer <= 0:
-                self._pending_resize = False
-                self._handle_resize()
+        self.timers.update(dt)
 
         # Normal dirty check (for non-resize layout changes)
-        if self.root and self.is_dirty and not self._pending_resize:
+        if self.root and self.is_dirty and not self._has_pending_resize():
             self._recalculate_layout()
+
+    def _has_pending_resize(self) -> bool:
+        return self._resize_timer is not None and self._resize_timer.active
+
+    def _cancel_resize_timer(self) -> None:
+        if self._resize_timer is None:
+            return
+        self._resize_timer.cancel()
+        self._resize_timer = None
+
+    def _schedule_resize_debounce(self) -> None:
+        self._cancel_resize_timer()
+        delay = self.config.layout_debounce_ms / 1000.0
+        self._resize_timer = self.timers.after(delay, self._flush_debounced_resize)
+
+    def _flush_debounced_resize(self) -> None:
+        self._resize_timer = None
+        self._handle_resize()
 
     def _handle_resize(self):
         """Handle window resize based on config mode."""
         if self.config.resize_mode == ResizeMode.RESPONSIVE:
             # Responsive: just recalculate layout with new size
             self.is_dirty = True
+            self._dirty_layout_root = self.root
         else:
             # Scale modes: calculate transform
             self.scale_transform = calculate_scale_transform(
@@ -405,6 +610,7 @@ class UIManager:
             # For FIXED mode, we don't need to recalculate layout
             if self.config.resize_mode != ResizeMode.FIXED:
                 self.is_dirty = True
+                self._dirty_layout_root = self.root
 
     def _recalculate_layout(self):
         """Recalculate UI layout."""
@@ -424,8 +630,18 @@ class UIManager:
             layout_w = float(self.config.reference_width or self.screen_width)
             layout_h = float(self.config.reference_height or self.screen_height)
 
-        self.root.calculate_layout(0, 0, layout_w, layout_h)
+        layout_root = self._dirty_layout_root or self.root
+        if layout_root is self.root:
+            self.root.calculate_layout(0, 0, layout_w, layout_h)
+        else:
+            layout_request = layout_root._last_layout_request
+            if layout_request is None:
+                self.root.calculate_layout(0, 0, layout_w, layout_h)
+            else:
+                layout_root.calculate_layout(*layout_request)
+
         self.is_dirty = False
+        self._dirty_layout_root = None
 
         # Call after callback
         if self.config.on_after_layout:
@@ -453,6 +669,9 @@ class UIManager:
 
         # Render tooltip (always on top)
         self._render_tooltip()
+
+        # Render debugger overlay last
+        self.debugger.render(self.root)
 
     def get_reference_size(self) -> tuple[int, int]:
         """Get the reference resolution used for layout."""
@@ -508,7 +727,6 @@ class UIManager:
 
         # Adjust mouse coords for ScrollView children
         child_mx, child_my = mx, my
-        from .components.scroll import ScrollView
 
         if isinstance(node, ScrollView):
             child_my = my - node.scroll_y
@@ -583,31 +801,43 @@ class UIManager:
 
     def set_tooltip_delay(self, delay: float):
         """Set the delay before tooltips appear (in seconds)."""
+        if delay < 0.0:
+            raise ValueError("Tooltip delay must be >= 0.")
         self._tooltip_delay = delay
 
-    def _update_tooltip(self, mouse_pos: Vector2, dt: float):
+    def _cancel_tooltip_timer(self) -> None:
+        if self._tooltip_timer_handle is None:
+            return
+        self._tooltip_timer_handle.cancel()
+        self._tooltip_timer_handle = None
+
+    def _show_tooltip(self, tooltip: str) -> None:
+        self._tooltip_timer_handle = None
+        if self._tooltip_text == tooltip:
+            self._tooltip_visible = True
+
+    def _update_tooltip(self, mouse_pos: Vector2):
         """Update tooltip state based on hovered node."""
-        # Check if hovered node has tooltip
         tooltip = None
         if self._hovered_node:
             tooltip = getattr(self._hovered_node, "tooltip", None)
 
         if tooltip:
+            self._tooltip_pos = mouse_pos
             if tooltip != self._tooltip_text:
-                # New tooltip, reset timer
                 self._tooltip_text = tooltip
-                self._tooltip_timer = 0.0
                 self._tooltip_visible = False
-            else:
-                # Same tooltip, increment timer
-                self._tooltip_timer += dt
-                if self._tooltip_timer >= self._tooltip_delay:
-                    self._tooltip_visible = True
-                    self._tooltip_pos = mouse_pos
+                self._cancel_tooltip_timer()
+                if self._tooltip_delay == 0.0:
+                    self._show_tooltip(tooltip)
+                else:
+                    self._tooltip_timer_handle = self.timers.after(
+                        self._tooltip_delay,
+                        lambda tooltip_text=tooltip: self._show_tooltip(tooltip_text),
+                    )
         else:
-            # No tooltip
+            self._cancel_tooltip_timer()
             self._tooltip_text = None
-            self._tooltip_timer = 0.0
             self._tooltip_visible = False
 
     def _render_tooltip(self):

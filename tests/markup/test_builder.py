@@ -10,12 +10,19 @@ from arepy_ui.components.text import Text
 from arepy_ui.core.node import Node
 from arepy_ui.core.types import Unit, UnitType
 from arepy_ui.markup.builder import (
+    _COMPILED_NODE_PLAN_CACHE,
+    _RESOLVED_STYLE_CACHE,
     _STYLE_CONVERTERS,
+    _TAG_ATTRIBUTE_PLAN_CACHE,
+    _compile_node_plan_uncached,
+    _apply_tag_attributes,
+    _clear_builder_caches,
     _convert_style_value,
     build_component,
     resolve_styles,
 )
 from arepy_ui.markup.errors import ErrorCollector
+from arepy_ui.markup.globals import clear_globals, load_globals_string, set_theme
 from arepy_ui.markup.parsers import parse_acss, parse_aui
 
 # Components dictionary needed by build_component
@@ -89,6 +96,14 @@ class TestStyleConverters:
 class TestResolveStyles:
     """Tests for style resolution from stylesheet."""
 
+    def setup_method(self):
+        _clear_builder_caches()
+        clear_globals()
+
+    def teardown_method(self):
+        _clear_builder_caches()
+        clear_globals()
+
     def test_resolve_styles_with_id(self):
         aui_content = '<container id="main"></container>'
         css_content = """
@@ -105,8 +120,8 @@ class TestResolveStyles:
         # Builder converts to Unit objects
         assert styles is not None
         assert isinstance(styles.get("width"), Unit)
-        assert styles.get("width").type == UnitType.PERCENT # type: ignore
-        assert styles.get("width").value == 100.0 # type: ignore
+        assert styles.get("width").type == UnitType.PERCENT  # type: ignore
+        assert styles.get("width").value == 100.0  # type: ignore
 
     def test_resolve_styles_with_class(self):
         aui_content = '<container class="wrapper"></container>'
@@ -151,6 +166,139 @@ class TestResolveStyles:
         styles = resolve_styles(root, None)
 
         assert isinstance(styles, dict)
+
+    def test_resolve_styles_reuses_cache_for_same_selector_signature(self):
+        aui_content = '<container class="card"></container>'
+        css_content = ".card { width: 100px; height: 50px; }"
+
+        first_root, _ = parse_aui(aui_content)
+        second_root, _ = parse_aui(aui_content)
+        stylesheet = parse_acss(css_content)
+        assert first_root is not None
+        assert second_root is not None
+
+        with patch(
+            "arepy_ui.markup.builder._convert_style_value",
+            wraps=_convert_style_value,
+        ) as mock_convert:
+            resolve_styles(first_root, stylesheet)
+            first_call_count = mock_convert.call_count
+            resolve_styles(second_root, stylesheet)
+
+        assert first_call_count > 0
+        assert mock_convert.call_count == first_call_count
+
+    def test_resolve_styles_cache_invalidates_on_theme_change(self):
+        load_globals_string(
+            """
+            :root { --fg: #111111; }
+            :root.light { --fg: #eeeeee; }
+            .headline { color: var(--fg); }
+            """
+        )
+        root, _ = parse_aui('<text class="headline">Hello</text>')
+        assert root is not None
+
+        dark_styles = resolve_styles(root, None)
+        set_theme("light")
+        light_styles = resolve_styles(root, None)
+
+        assert dark_styles["text_color"] != light_styles["text_color"]
+
+    def test_resolve_styles_cache_invalidates_on_clear_globals(self):
+        load_globals_string(
+            """
+            .headline { color: #112233; }
+            """
+        )
+        root, _ = parse_aui('<text class="headline">Hello</text>')
+        assert root is not None
+
+        styled = resolve_styles(root, None)
+        clear_globals()
+        reset = resolve_styles(root, None)
+
+        assert styled.get("text_color") is not None
+        assert reset.get("text_color") is None
+
+    def test_resolved_style_cache_uses_lru_bound(self, monkeypatch):
+        monkeypatch.setattr(
+            "arepy_ui.markup.builder._MAX_RESOLVED_STYLE_CACHE_ENTRIES", 2
+        )
+
+        stylesheet = parse_acss(
+            """
+            .card-1 { width: 10px; }
+            .card-2 { width: 20px; }
+            .card-3 { width: 30px; }
+            """
+        )
+        roots = []
+        for name in ("card-1", "card-2", "card-3"):
+            root, _ = parse_aui(f'<container class="{name}"></container>')
+            assert root is not None
+            roots.append(root)
+
+        for root in roots:
+            resolve_styles(root, stylesheet)
+
+        assert len(_RESOLVED_STYLE_CACHE) == 2
+
+    def test_tag_attribute_plan_cache_uses_lru_bound(self, monkeypatch):
+        monkeypatch.setattr(
+            "arepy_ui.markup.builder._MAX_TAG_ATTRIBUTE_PLAN_CACHE_ENTRIES", 2
+        )
+
+        roots = []
+        for width in ("10px", "20px", "30px"):
+            root, _ = parse_aui(f'<input placeholder="Name" width="{width}"></input>')
+            assert root is not None
+            roots.append(root)
+
+        for root in roots:
+            _apply_tag_attributes(root.tag, root, {}, {}, {}, None)
+
+        assert len(_TAG_ATTRIBUTE_PLAN_CACHE) == 2
+
+    def test_compiled_node_plan_is_reused_for_same_tree(self):
+        root, _ = parse_aui(
+            """
+            <container>
+                <container></container>
+                <container></container>
+            </container>
+            """
+        )
+        assert root is not None
+
+        with patch(
+            "arepy_ui.markup.builder._compile_node_plan_uncached",
+            wraps=_compile_node_plan_uncached,
+        ) as mock_compile:
+            build_component(root, None, {}, COMPONENTS)
+            first_call_count = mock_compile.call_count
+            build_component(root, None, {}, COMPONENTS)
+
+        assert first_call_count > 0
+        assert mock_compile.call_count == first_call_count
+
+    def test_compiled_node_plan_cache_uses_lru_bound(self, monkeypatch):
+        monkeypatch.setattr(
+            "arepy_ui.markup.builder._MAX_COMPILED_NODE_PLAN_CACHE_ENTRIES", 2
+        )
+
+        roots = []
+        for index in range(3):
+            root, _ = parse_aui(
+                f"<container><container id='child-{index}'></container></container>"
+            )
+            assert root is not None
+            roots.append(root)
+
+        for root in roots:
+            build_component(root, None, {}, COMPONENTS)
+
+        assert len(_COMPILED_NODE_PLAN_CACHE) == 2
 
 
 class TestBuildComponent:
@@ -266,7 +414,7 @@ class TestBuildComponent:
         root, _ = parse_aui(aui_content)
         stylesheet = parse_acss(css_content)
         assert root is not None
-        component = build_component(root, stylesheet, handlers, COMPONENTS) # type: ignore
+        component = build_component(root, stylesheet, handlers, COMPONENTS)  # type: ignore
         assert component is not None
 
         assert component.on_click is not None
@@ -397,6 +545,29 @@ class TestResolveStylesInlineAndCascade:
 
         assert styles.get("flex_direction") == FlexDirection.COLUMN
 
+    @patch("arepy_ui.core.fonts.get_font_manager")
+    def test_text_color_is_resolved_once_from_styles(self, mock_fm):
+        from arepy_ui.core.types import Color
+        from arepy_ui.core.fonts import TextMetrics
+
+        mock_fm.return_value.measure_text_ex.return_value = TextMetrics(100, 20, 24)
+
+        aui_content = '<text class="headline">Title</text>'
+        css_content = ".headline { color: #112233; }"
+
+        root, _ = parse_aui(aui_content)
+        stylesheet = parse_acss(css_content)
+        assert root is not None
+
+        component = build_component(root, stylesheet, {}, COMPONENTS)
+
+        assert component is not None
+        assert isinstance(component, Text)
+        assert isinstance(component.color, Color)
+        assert component.color.r == 17
+        assert component.color.g == 34
+        assert component.color.b == 51
+
 
 class TestBuildComponentErrors:
     """Tests for error handling in build_component."""
@@ -481,7 +652,7 @@ class TestApplyTagAttributes:
         root, _ = parse_aui(aui_content)
         assert root is not None
         component = build_component(root, None, {}, components)
-        assert component.options == ["a", "b", "c"] # type: ignore
+        assert component.options == ["a", "b", "c"]  # type: ignore
 
     def test_input_attributes(self):
         from arepy_ui.components.input import TextInput
@@ -492,7 +663,7 @@ class TestApplyTagAttributes:
         assert root is not None
         component = build_component(root, None, {}, components)
 
-        assert component.placeholder == "Enter name" # type: ignore
+        assert component.placeholder == "Enter name"  # type: ignore
 
     @patch("arepy_ui.core.fonts.get_font_manager")
     def test_button_with_handler(self, mock_fm):
@@ -509,7 +680,7 @@ class TestApplyTagAttributes:
         component = build_component(root, None, handlers, COMPONENTS)
 
         assert component is not None
-        component.on_click() # type: ignore
+        component.on_click()  # type: ignore
         assert len(clicked) == 1
 
     def test_slider_with_on_change_handler(self):
@@ -524,5 +695,5 @@ class TestApplyTagAttributes:
         assert root is not None
 
         component = build_component(root, None, handlers, components)
-        component.on_change(50) # type: ignore
+        component.on_change(50)  # type: ignore
         assert values == [50]

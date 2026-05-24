@@ -9,9 +9,6 @@ A simple main menu with:
 - Start and Quit buttons
 - A settings panel
 
-<!-- TODO: Add screenshot of final result -->
-![Final Menu](../../assets/examples/first-ui-result.png)
-
 ## Step 1: Setup
 
 First, create a new Python file:
@@ -99,7 +96,7 @@ def setup(game: ArepyEngine):
     game.add_resource(ui_manager)
 ```
 
-Now you should see "My Awesome Game" centered on screen! 🎉
+Now you should see "My Awesome Game" centered on screen.
 
 ## Step 4: Add Buttons
 
@@ -172,7 +169,7 @@ Button(
 Here's everything together:
 
 ```python
-from arepy import ArepyEngine
+from arepy import ArepyEngine, SystemPipeline
 from arepy_ui import UIManager, UIConfig, Node, Text, Button, Style, Color, Unit, FlexDirection, JustifyContent, AlignItems
 
 ui_manager: UIManager = None

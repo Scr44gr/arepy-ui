@@ -790,14 +790,9 @@ When registering a component, you can set these properties:
 
 ## Performance
 
-The markup parser is implemented in **Cython** for maximum performance. To enable Cython acceleration:
+The markup parser is performance-sensitive code and the project ships with compiled parser modules in the normal build workflow. The public runtime API does not require a separate `arepy_ui.markup.build_ext` command.
 
-```bash
-pip install arepy-ui[markup]
-python -m arepy_ui.markup.build_ext
-```
-
-If Cython is not installed, the pure Python fallback is used automatically.
+If you are working from source, use the repository build flow documented in the project setup instead of ad-hoc markup-specific commands.
 
 ---
 

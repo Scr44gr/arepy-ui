@@ -1,5 +1,6 @@
 """TextArea component - Multi-line text input."""
 
+from bisect import bisect_left
 from typing import Callable, List, Optional
 
 from arepy import CursorType
@@ -96,6 +97,9 @@ class TextArea(Node):
         # Mouse drag state
         self._is_dragging = False
 
+        self._line_metrics_cache = {}
+        self._line_number_width_cache = {}
+
         # Colors
         self.text_color = Color(220, 220, 230, 255)
         self.placeholder_color = Color(100, 100, 110, 255)
@@ -130,9 +134,61 @@ class TextArea(Node):
         """Get width reserved for line numbers."""
         if not self.show_line_numbers:
             return 0
+
+        cache_key = (len(self._lines), self.font_size)
+        cached_width = self._line_number_width_cache.get(cache_key)
+        if cached_width is not None:
+            return cached_width
+
         runtime = get_runtime()
         max_num = str(len(self._lines))
-        return runtime.renderer.measure_text(max_num, self.font_size) + 20
+        width = runtime.renderer.measure_text(max_num, self.font_size) + 20
+        if len(self._line_number_width_cache) >= 32:
+            self._line_number_width_cache.clear()
+        self._line_number_width_cache[cache_key] = width
+        return width
+
+    def _get_line_metrics(self, line: str, runtime):
+        cache_key = (line, self.font_size)
+        cached_metrics = self._line_metrics_cache.get(cache_key)
+        if cached_metrics is not None:
+            return cached_metrics
+
+        prefix_widths = [0.0]
+        midpoint_widths = []
+        for index in range(len(line)):
+            next_width = runtime.renderer.measure_text(
+                line[: index + 1], self.font_size
+            )
+            prefix_widths.append(next_width)
+            midpoint_widths.append((prefix_widths[index] + next_width) / 2)
+
+        metrics = (prefix_widths, midpoint_widths, prefix_widths[-1])
+        if len(self._line_metrics_cache) >= 512:
+            self._line_metrics_cache.clear()
+        self._line_metrics_cache[cache_key] = metrics
+        return metrics
+
+    def _get_prefix_width(self, line_index: int, column: int, runtime) -> float:
+        line = self._lines[line_index]
+        prefix_widths, _, _ = self._get_line_metrics(line, runtime)
+        clamped = max(0, min(column, len(line)))
+        return prefix_widths[clamped]
+
+    def _get_line_width(self, line_index: int, runtime) -> float:
+        _, _, width = self._get_line_metrics(self._lines[line_index], runtime)
+        return width
+
+    def _get_column_at_x(
+        self, line_index: int, x: float, content_x: float, runtime
+    ) -> int:
+        relative_x = x - content_x + self.scroll_x
+        if relative_x <= 0:
+            return 0
+
+        line = self._lines[line_index]
+        _, midpoint_widths, _ = self._get_line_metrics(line, runtime)
+        return min(bisect_left(midpoint_widths, relative_x), len(line))
 
     def _get_content_area(self):
         """Get the content area for text (excluding line numbers)."""
@@ -536,16 +592,9 @@ class TextArea(Node):
                 clicked_line = max(0, min(clicked_line, len(self._lines) - 1))
 
                 # Calculate clicked column
-                line_text = self._lines[clicked_line]
-                clicked_col = 0
-                x_offset = content_x - self.scroll_x
-
-                for i, char in enumerate(line_text):
-                    char_width = runtime.renderer.measure_text(char, self.font_size)
-                    if mouse_pos.x < x_offset + char_width / 2:
-                        break
-                    x_offset += char_width
-                    clicked_col = i + 1
+                clicked_col = self._get_column_at_x(
+                    clicked_line, mouse_pos.x, content_x, runtime
+                )
 
                 shift = runtime.input.is_key_down(
                     Key.LEFT_SHIFT
@@ -570,16 +619,7 @@ class TextArea(Node):
             drag_line = int((mouse_pos.y - content_y + self.scroll_y) / line_height)
             drag_line = max(0, min(drag_line, len(self._lines) - 1))
 
-            line_text = self._lines[drag_line]
-            drag_col = 0
-            x_offset = content_x - self.scroll_x
-
-            for i, char in enumerate(line_text):
-                char_width = runtime.renderer.measure_text(char, self.font_size)
-                if mouse_pos.x < x_offset + char_width / 2:
-                    break
-                x_offset += char_width
-                drag_col = i + 1
+            drag_col = self._get_column_at_x(drag_line, mouse_pos.x, content_x, runtime)
 
             # Extend selection while dragging
             if drag_line != self.cursor_line or drag_col != self.cursor_col:
@@ -653,9 +693,7 @@ class TextArea(Node):
 
         # Horizontal scroll
         runtime = get_runtime()
-        cursor_x = runtime.renderer.measure_text(
-            self._lines[self.cursor_line][: self.cursor_col], self.font_size
-        )
+        cursor_x = self._get_prefix_width(self.cursor_line, self.cursor_col, runtime)
         if cursor_x < self.scroll_x:
             self.scroll_x = cursor_x - 10
         elif cursor_x > self.scroll_x + content_w - 10:
@@ -751,44 +789,34 @@ class TextArea(Node):
                     # Selection on single line
                     x1 = (
                         content_x
-                        + runtime.renderer.measure_text(
-                            line[:start_col], self.font_size
-                        )
+                        + self._get_prefix_width(i, start_col, runtime)
                         - self.scroll_x
                     )
                     x2 = (
                         content_x
-                        + runtime.renderer.measure_text(line[:end_col], self.font_size)
+                        + self._get_prefix_width(i, end_col, runtime)
                         - self.scroll_x
                     )
                 elif i == start_line:
                     x1 = (
                         content_x
-                        + runtime.renderer.measure_text(
-                            line[:start_col], self.font_size
-                        )
+                        + self._get_prefix_width(i, start_col, runtime)
                         - self.scroll_x
                     )
                     x2 = (
-                        content_x
-                        + runtime.renderer.measure_text(line, self.font_size)
-                        - self.scroll_x
-                        + 5
+                        content_x + self._get_line_width(i, runtime) - self.scroll_x + 5
                     )
                 elif i == end_line:
                     x1 = content_x - self.scroll_x
                     x2 = (
                         content_x
-                        + runtime.renderer.measure_text(line[:end_col], self.font_size)
+                        + self._get_prefix_width(i, end_col, runtime)
                         - self.scroll_x
                     )
                 else:
                     x1 = content_x - self.scroll_x
                     x2 = (
-                        content_x
-                        + runtime.renderer.measure_text(line, self.font_size)
-                        - self.scroll_x
-                        + 5
+                        content_x + self._get_line_width(i, runtime) - self.scroll_x + 5
                     )
 
                 runtime.renderer.draw_rectangle(
@@ -835,9 +863,7 @@ class TextArea(Node):
             if self.show_cursor:
                 cursor_x = (
                     content_x
-                    + runtime.renderer.measure_text(
-                        self._lines[self.cursor_line][: self.cursor_col], self.font_size
-                    )
+                    + self._get_prefix_width(self.cursor_line, self.cursor_col, runtime)
                     - self.scroll_x
                 )
                 cursor_y = content_y + self.cursor_line * line_height - self.scroll_y

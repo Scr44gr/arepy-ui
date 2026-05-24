@@ -243,6 +243,19 @@ class TestACSSParsing:
         sheet = parse_acss(content)
         assert sheet.rules == []
 
+    def test_parse_ignores_block_and_line_comments(self):
+        content = """
+        /* remove this */
+        .first { width: 100px; }
+        // and this too
+        .second { height: 200px; }
+        """
+        sheet = parse_acss(content)
+
+        assert len(sheet.rules) == 2
+        assert sheet.resolve_class("first")["width"] == ("px", 100.0)
+        assert sheet.resolve_class("second")["height"] == ("px", 200.0)
+
 
 class TestACSSComplexStyles:
     """Tests for complex ACSS styling scenarios."""
@@ -353,3 +366,24 @@ class TestACSSComplexStyles:
 
         # ID selector
         assert sheet.resolve_id("main")["width"] == ("percent", 100.0)
+
+    def test_pseudo_selectors_use_indexed_resolution(self):
+        content = """
+        .button:hover { background: #123456; }
+        #hero:active { background: #654321; }
+        text:hover { color: #abcdef; }
+        """
+        sheet = parse_acss(content)
+
+        assert sheet.resolve_class_pseudo("button", "hover")["background"] == (
+            "color",
+            "#123456",
+        )
+        assert sheet.resolve_id_pseudo("hero", "active")["background"] == (
+            "color",
+            "#654321",
+        )
+        assert sheet.resolve_element_pseudo("text", "hover")["color"] == (
+            "color",
+            "#abcdef",
+        )

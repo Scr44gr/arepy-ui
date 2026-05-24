@@ -1,5 +1,7 @@
+from pathlib import Path
+
 import raylib as rl
-from arepy import ArepyEngine, Display, Input, Renderer2D, SystemPipeline
+from arepy import ArepyEngine, Display, Input, Renderer2D, SystemPipeline, TextureFilter
 from arepy.ecs.world import World
 
 from arepy_ui import (
@@ -7,8 +9,10 @@ from arepy_ui import (
     Button,
     Color,
     FlexDirection,
+    FontLoadRequest,
     JustifyContent,
     Node,
+    PositionType,
     ResizeMode,
     ScrollView,
     Spacing,
@@ -19,13 +23,166 @@ from arepy_ui import (
     UIManager,
     Unit,
     Video,
-    configure_runtime,
+    load_fonts,
 )
 from arepy_ui.components import Divider
-from arepy_ui.debug import UIDebugger
 
 ui_manager: UIManager = None  # type: ignore
-ui_debugger: UIDebugger = None  # type: ignore
+
+FONT_BODY: str | None = None
+FONT_BRAND: str | None = None
+FONT_META: str | None = None
+
+BG = Color(15, 15, 15, 255)
+SURFACE = Color(24, 24, 24, 255)
+SURFACE_SOFT = Color(34, 34, 34, 255)
+SURFACE_ELEVATED = Color(39, 39, 39, 255)
+SURFACE_BORDER = Color(58, 58, 58, 255)
+TEXT_PRIMARY = Color(241, 241, 241, 255)
+TEXT_SECONDARY = Color(170, 170, 170, 255)
+TEXT_TERTIARY = Color(120, 120, 120, 255)
+ACCENT_RED = Color(255, 0, 0, 255)
+CHIP_ACTIVE = Color(241, 241, 241, 255)
+CHIP_ACTIVE_TEXT = Color(15, 15, 15, 255)
+
+
+def noop():
+    pass
+
+
+def _first_existing_path(candidates: list[str]) -> str | None:
+    for candidate in candidates:
+        if Path(candidate).exists():
+            return candidate
+    return None
+
+
+def setup_demo_fonts() -> None:
+    global FONT_BODY, FONT_BRAND, FONT_META
+
+    font_base_sizes = {
+        "yt-body": 20,
+        "yt-brand": 32,
+        "yt-meta": 14,
+    }
+
+    font_sources = {
+        "yt-body": [
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/segoeui.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+        ],
+        "yt-brand": [
+            "C:/Windows/Fonts/arialbd.ttf",
+            "C:/Windows/Fonts/bahnschrift.ttf",
+            "C:/Windows/Fonts/seguisb.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        ],
+        "yt-meta": [
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/verdana.ttf",
+            "C:/Windows/Fonts/tahoma.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+        ],
+    }
+
+    requests: list[FontLoadRequest] = []
+    loaded_names: dict[str, str] = {}
+
+    for name, candidates in font_sources.items():
+        path = _first_existing_path(candidates)
+        if not path:
+            continue
+        requests.append(
+            FontLoadRequest(
+                name=name,
+                path=path,
+                base_size=font_base_sizes.get(name, 20),
+                set_as_default=name == "yt-body",
+                texture_filter=TextureFilter.TRILINEAR,
+            )
+        )
+        loaded_names[name] = name
+
+    if requests:
+        load_fonts(requests)
+
+    FONT_BODY = loaded_names.get("yt-body")
+    FONT_BRAND = loaded_names.get("yt-brand") or FONT_BODY
+    FONT_META = loaded_names.get("yt-meta") or FONT_BODY
+
+
+def font_for(role: str) -> str | None:
+    if role == "brand":
+        return FONT_BRAND
+    if role == "meta":
+        return FONT_META
+    return FONT_BODY
+
+
+def ui_text(text: str, size: float, color: Color, role: str = "body") -> Text:
+    return Text(text, size=size, color=color, font_name=font_for(role))
+
+
+def create_chip(label: str, active: bool = False) -> Node:
+    chip = Node(
+        style=Style(
+            width=Unit.auto(),
+            height=Unit.auto(),
+            background_color=CHIP_ACTIVE if active else SURFACE_SOFT,
+            border_radius=8.0,
+            padding=Spacing.symmetric(vertical=8, horizontal=12),
+        )
+    )
+    chip.add_child(
+        ui_text(
+            label,
+            12,
+            CHIP_ACTIVE_TEXT if active else TEXT_PRIMARY,
+            role="body",
+        )
+    )
+    return chip
+
+
+def create_icon_avatar(label: str, color: Color) -> Node:
+    avatar = Node(
+        style=Style(
+            width=Unit.px(36),
+            height=Unit.px(36),
+            background_color=color,
+            border_radius=18.0,
+            justify_content=JustifyContent.CENTER,
+            align_items=AlignItems.CENTER,
+        )
+    )
+    avatar.add_child(ui_text(label, 13, TEXT_PRIMARY, role="brand"))
+    return avatar
+
+
+def create_action_button(
+    label: str,
+    width: int,
+    background: Color = SURFACE_SOFT,
+    text_color: Color = TEXT_PRIMARY,
+) -> Button:
+    return Button(
+        label,
+        noop,
+        Unit.px(width),
+        Unit.px(36),
+        background,
+        text_color=text_color,
+        border_radius=18.0,
+        font_size=12,
+        font_name=font_for("body"),
+    )
 
 
 def create_video_card(
@@ -37,8 +194,7 @@ def create_video_card(
             height=Unit.auto(),
             flex_direction=FlexDirection.ROW,
             gap=12,
-            padding=Spacing.all(8),
-            border_radius=8.0,
+            padding=Spacing.symmetric(vertical=8, horizontal=0),
         )
     )
 
@@ -46,77 +202,86 @@ def create_video_card(
         style=Style(
             width=Unit.px(168),
             height=Unit.px(94),
-            background_color=Color(50, 50, 55, 255),
-            border_radius=8.0,
+            background_color=Color(56, 56, 56, 255),
+            border_radius=10.0,
         )
     )
+
+    thumb_label = Node(
+        style=Style(
+            position=PositionType.ABSOLUTE,
+            top=Unit.px(8),
+            left=Unit.px(8),
+            width=Unit.auto(),
+            height=Unit.auto(),
+            background_color=Color(0, 0, 0, 190),
+            border_radius=4.0,
+            padding=Spacing.symmetric(vertical=3, horizontal=6),
+        )
+    )
+    thumb_label.add_child(ui_text("AREPY", 10, TEXT_PRIMARY, role="meta"))
+    thumb.add_child(thumb_label)
 
     duration_badge = Node(
         style=Style(
+            position=PositionType.ABSOLUTE,
+            right=Unit.px(8),
+            bottom=Unit.px(8),
             width=Unit.auto(),
             height=Unit.auto(),
             background_color=Color(0, 0, 0, 220),
-            padding=Spacing.symmetric(horizontal=6, vertical=2),
             border_radius=4.0,
+            padding=Spacing.symmetric(vertical=3, horizontal=6),
         )
     )
-    duration_badge.add_child(Text(duration, size=11, color=Color(255, 255, 255, 255)))
+    duration_badge.add_child(ui_text(duration, 10, TEXT_PRIMARY, role="meta"))
     thumb.add_child(duration_badge)
     card.add_child(thumb)
 
-    # Info
     info = Node(
         style=Style(
-            width=Unit.percent(55),
+            width=Unit.percent(58),
             height=Unit.auto(),
             flex_direction=FlexDirection.COLUMN,
             gap=4,
         )
     )
 
-    display_title = title[:45] + "..." if len(title) > 45 else title
-    info.add_child(Text(display_title, size=14, color=Color(255, 255, 255, 255)))
-    info.add_child(Text(channel, size=12, color=Color(150, 150, 150, 255)))
-    info.add_child(Text(views, size=12, color=Color(150, 150, 150, 255)))
+    display_title = title[:48] + "..." if len(title) > 48 else title
+    info.add_child(ui_text(display_title, 14, TEXT_PRIMARY, role="body"))
+    info.add_child(ui_text(channel, 12, TEXT_SECONDARY, role="meta"))
+    info.add_child(ui_text(views, 12, TEXT_TERTIARY, role="meta"))
 
     card.add_child(info)
     return card
 
 
 def create_comment(author: str, text: str, likes: str, time_ago: str) -> Node:
-    """Crea un comentario."""
     comment = Node(
         style=Style(
             width=Unit.percent(100),
             height=Unit.auto(),
             flex_direction=FlexDirection.ROW,
             gap=12,
-            padding=Spacing.symmetric(vertical=12, horizontal=0),
+            padding=Spacing.symmetric(vertical=14, horizontal=0),
         )
     )
 
-    # Avatar
-    avatar = Node(
-        style=Style(
-            width=Unit.px(40),
-            height=Unit.px(40),
-            background_color=Color(80, 80, 120, 255),
-            border_radius=20.0,
-        )
-    )
+    avatar = create_icon_avatar(author[1:3].upper(), Color(67, 102, 190, 255))
+    avatar.style.width = Unit.px(40)
+    avatar.style.height = Unit.px(40)
+    avatar.style.border_radius = 20.0
     comment.add_child(avatar)
 
-    # Contenido
     content = Node(
         style=Style(
             width=Unit.percent(90),
             height=Unit.auto(),
             flex_direction=FlexDirection.COLUMN,
-            gap=4,
+            gap=6,
         )
     )
 
-    # Header del comentario
     header = Node(
         style=Style(
             width=Unit.percent(100),
@@ -126,13 +291,12 @@ def create_comment(author: str, text: str, likes: str, time_ago: str) -> Node:
             align_items=AlignItems.CENTER,
         )
     )
-    header.add_child(Text(author, size=13, color=Color(255, 255, 255, 255)))
-    header.add_child(Text(time_ago, size=12, color=Color(120, 120, 120, 255)))
+    header.add_child(ui_text(author, 13, TEXT_PRIMARY, role="body"))
+    header.add_child(ui_text(time_ago, 12, TEXT_TERTIARY, role="meta"))
     content.add_child(header)
 
-    content.add_child(Text(text, size=13, color=Color(220, 220, 220, 255)))
+    content.add_child(ui_text(text, 13, Color(225, 225, 225, 255), role="body"))
 
-    # Likes
     likes_row = Node(
         style=Style(
             width=Unit.auto(),
@@ -142,89 +306,133 @@ def create_comment(author: str, text: str, likes: str, time_ago: str) -> Node:
             align_items=AlignItems.CENTER,
         )
     )
-    likes_row.add_child(Text(f" {likes}", size=12, color=Color(150, 150, 150, 255)))
-    likes_row.add_child(Text("Reply", size=12, color=Color(150, 150, 150, 255)))
+    likes_row.add_child(ui_text(f"LIKE {likes}", 11, TEXT_SECONDARY, role="meta"))
+    likes_row.add_child(ui_text("REPLY", 11, TEXT_SECONDARY, role="meta"))
     content.add_child(likes_row)
 
     comment.add_child(content)
     return comment
 
 
-def create_ui(video_path: str) -> Node:
-    """Layout principal estilo YouTube - 100% responsive."""
-
-    # Root
-    root = Node(
-        style=Style(
-            width=Unit.vw(100),
-            height=Unit.vh(100),
-            background_color=Color(15, 15, 15, 255),
-            flex_direction=FlexDirection.COLUMN,
-        )
-    )
-
-    # ========== HEADER ==========
+def create_header() -> Node:
     header = Node(
         style=Style(
             width=Unit.percent(100),
             height=Unit.px(56),
-            background_color=Color(15, 15, 15, 255),
+            background_color=BG,
             flex_direction=FlexDirection.ROW,
             align_items=AlignItems.CENTER,
             justify_content=JustifyContent.SPACE_BETWEEN,
-            padding=Spacing.symmetric(horizontal=24, vertical=0),
+            padding=Spacing.symmetric(vertical=0, horizontal=16),
         )
     )
 
-    # Logo
-    logo = Text(" YouTube", size=20, color=Color(255, 255, 255, 255))
-    header.add_child(logo)
-
-    # Search
-    search_container = Node(
+    left_cluster = Node(
         style=Style(
-            width=Unit.percent(40),
+            width=Unit.auto(),
+            height=Unit.auto(),
+            flex_direction=FlexDirection.ROW,
+            align_items=AlignItems.CENTER,
+            gap=14,
+        )
+    )
+    left_cluster.add_child(create_action_button("=", 36))
+
+    logo_row = Node(
+        style=Style(
+            width=Unit.auto(),
+            height=Unit.auto(),
+            flex_direction=FlexDirection.ROW,
+            align_items=AlignItems.CENTER,
+            gap=8,
+        )
+    )
+    logo_badge = Node(
+        style=Style(
+            width=Unit.px(30),
+            height=Unit.px(22),
+            background_color=ACCENT_RED,
+            border_radius=7.0,
+            justify_content=JustifyContent.CENTER,
+            align_items=AlignItems.CENTER,
+        )
+    )
+    logo_badge.add_child(ui_text(">", 13, TEXT_PRIMARY, role="brand"))
+    logo_row.add_child(logo_badge)
+    logo_row.add_child(ui_text("YouTube", 20, TEXT_PRIMARY, role="brand"))
+    left_cluster.add_child(logo_row)
+    header.add_child(left_cluster)
+
+    search_row = Node(
+        style=Style(
+            width=Unit.percent(44),
             height=Unit.px(40),
             flex_direction=FlexDirection.ROW,
-            justify_content=JustifyContent.CENTER,
+            align_items=AlignItems.CENTER,
+            gap=10,
         )
     )
     search_input = TextInput(
-        placeholder="Search...",
+        placeholder="Search",
         width=Unit.percent(100),
         height=Unit.px(40),
-    )
-    search_container.add_child(search_input)
-    header.add_child(search_container)
-
-    # User
-    user_avatar = Node(
+        font_size=14,
         style=Style(
-            width=Unit.px(32),
-            height=Unit.px(32),
-            background_color=Color(100, 120, 200, 255),
-            border_radius=16.0,
+            background_color=Color(18, 18, 18, 255),
+            border_color=SURFACE_BORDER,
+            border_width=1.0,
+            border_radius=20.0,
+            padding=Spacing.symmetric(vertical=8, horizontal=16),
+        ),
+    )
+    search_input.text_color = TEXT_PRIMARY
+    search_input.placeholder_color = TEXT_TERTIARY
+    search_input.default_border_color = SURFACE_BORDER
+    search_input.focused_border_color = Color(62, 166, 255, 255)
+    search_row.add_child(search_input)
+    search_row.add_child(create_action_button("Search", 78, SURFACE_SOFT))
+    search_row.add_child(create_action_button("Mic", 48, SURFACE_SOFT))
+    header.add_child(search_row)
+
+    right_cluster = Node(
+        style=Style(
+            width=Unit.auto(),
+            height=Unit.auto(),
+            flex_direction=FlexDirection.ROW,
+            align_items=AlignItems.CENTER,
+            gap=12,
         )
     )
-    header.add_child(user_avatar)
+    right_cluster.add_child(create_action_button("Create", 76, SURFACE_SOFT))
+    right_cluster.add_child(create_action_button("Bell", 56, SURFACE_SOFT))
+    right_cluster.add_child(create_icon_avatar("AU", Color(151, 93, 186, 255)))
+    header.add_child(right_cluster)
+    return header
 
-    root.add_child(header)
 
-    # Divider bajo header
-    root.add_child(Divider(color=Color(40, 40, 40, 255), thickness=1))
+def create_ui(video_path: str) -> Node:
+    root = Node(
+        style=Style(
+            width=Unit.vw(100),
+            height=Unit.vh(100),
+            background_color=BG,
+            flex_direction=FlexDirection.COLUMN,
+        )
+    )
 
-    # ========== MAIN CONTENT ==========
+    root.add_child(create_header())
+    root.add_child(Divider(color=Color(42, 42, 42, 255), thickness=1))
+
     main_wrapper = Node(
         style=Style(
             width=Unit.percent(100),
-            height=Unit.vh(92),  # Resto de la ventana
+            height=Unit.vh(92),
             flex_direction=FlexDirection.ROW,
             padding=Spacing.all(24),
             gap=24,
         )
     )
 
-    # ===== COLUMNA PRINCIPAL (70%) =====
     main_column = Node(
         style=Style(
             width=Unit.percent(68),
@@ -238,11 +446,10 @@ def create_ui(video_path: str) -> Node:
             width=Unit.percent(100),
             height=Unit.auto(),
             flex_direction=FlexDirection.COLUMN,
-            gap=16,
+            gap=18,
         )
     )
 
-    # Video Player
     video = Video(
         source=video_path,
         width=Unit.percent(100),
@@ -252,16 +459,15 @@ def create_ui(video_path: str) -> Node:
     )
     main_scroll_content.add_child(video)
 
-    # T�tulo del video
     main_scroll_content.add_child(
-        Text(
+        ui_text(
             "Building a YouTube-like Video Player with arepy-ui",
-            size=22,
-            color=Color(255, 255, 255, 255),
+            23,
+            TEXT_PRIMARY,
+            role="brand",
         )
     )
 
-    # Stats row
     stats_row = Node(
         style=Style(
             width=Unit.percent(100),
@@ -269,14 +475,13 @@ def create_ui(video_path: str) -> Node:
             flex_direction=FlexDirection.ROW,
             justify_content=JustifyContent.SPACE_BETWEEN,
             align_items=AlignItems.CENTER,
+            gap=12,
         )
     )
-
     stats_row.add_child(
-        Text("1,234,567 views  Dec 5, 2025", size=13, color=Color(150, 150, 150, 255))
+        ui_text("1,234,567 views  Dec 5, 2025", 13, TEXT_SECONDARY, role="meta")
     )
 
-    # Action buttons
     actions = Node(
         style=Style(
             width=Unit.auto(),
@@ -285,46 +490,13 @@ def create_ui(video_path: str) -> Node:
             gap=8,
         )
     )
-
-    def noop():
-        pass
-
-    actions.add_child(
-        Button(
-            " 123K",
-            noop,
-            Unit.px(90),
-            Unit.px(36),
-            Color(40, 40, 40, 255),
-            font_size=12,
-        )
-    )
-    actions.add_child(
-        Button("", noop, Unit.px(50), Unit.px(36), Color(40, 40, 40, 255), font_size=12)
-    )
-    actions.add_child(
-        Button(
-            "Share",
-            noop,
-            Unit.px(70),
-            Unit.px(36),
-            Color(40, 40, 40, 255),
-            font_size=12,
-        )
-    )
-    actions.add_child(
-        Button(
-            "Save", noop, Unit.px(60), Unit.px(36), Color(40, 40, 40, 255), font_size=12
-        )
-    )
-
+    actions.add_child(create_action_button("Like 123K", 110, SURFACE_ELEVATED))
+    actions.add_child(create_action_button("Dislike", 86, SURFACE_ELEVATED))
+    actions.add_child(create_action_button("Share", 78, SURFACE_ELEVATED))
+    actions.add_child(create_action_button("Save", 72, SURFACE_ELEVATED))
     stats_row.add_child(actions)
     main_scroll_content.add_child(stats_row)
 
-    # Divider
-    main_scroll_content.add_child(Divider(color=Color(50, 50, 50, 255)))
-
-    # Channel info
     channel_row = Node(
         style=Style(
             width=Unit.percent(100),
@@ -332,73 +504,65 @@ def create_ui(video_path: str) -> Node:
             flex_direction=FlexDirection.ROW,
             gap=16,
             align_items=AlignItems.CENTER,
-            padding=Spacing.symmetric(vertical=16, horizontal=0),
+            padding=Spacing.symmetric(vertical=8, horizontal=0),
         )
     )
-
-    channel_avatar = Node(
-        style=Style(
-            width=Unit.px(48),
-            height=Unit.px(48),
-            background_color=Color(200, 80, 80, 255),
-            border_radius=24.0,
-        )
-    )
-    channel_row.add_child(channel_avatar)
+    channel_row.add_child(create_icon_avatar("AI", Color(207, 84, 84, 255)))
 
     channel_info = Node(
         style=Style(
-            width=Unit.percent(60),
+            width=Unit.percent(58),
             height=Unit.auto(),
             flex_direction=FlexDirection.COLUMN,
-            gap=2,
+            gap=4,
         )
     )
-    channel_info.add_child(Text("Arepy UI", size=16, color=Color(255, 255, 255, 255)))
+    channel_info.add_child(ui_text("Arepy UI", 16, TEXT_PRIMARY, role="body"))
     channel_info.add_child(
-        Text("15.2K subscribers", size=12, color=Color(150, 150, 150, 255))
+        ui_text("15.2K subscribers  124 videos", 12, TEXT_SECONDARY, role="meta")
     )
     channel_row.add_child(channel_info)
-
     channel_row.add_child(
-        Button(
+        create_action_button(
             "Subscribe",
-            noop,
-            Unit.px(110),
-            Unit.px(38),
-            Color(255, 0, 0, 255),
-            font_size=14,
+            112,
+            ACCENT_RED,
+            TEXT_PRIMARY,
         )
     )
-
+    channel_row.add_child(create_action_button("Join", 64, SURFACE_SOFT))
     main_scroll_content.add_child(channel_row)
 
-    # Description box
     desc_box = Node(
         style=Style(
             width=Unit.percent(100),
             height=Unit.auto(),
-            background_color=Color(30, 30, 35, 255),
+            background_color=SURFACE,
             border_radius=12.0,
             padding=Spacing.all(16),
             flex_direction=FlexDirection.COLUMN,
-            gap=8,
+            gap=10,
         )
     )
     desc_box.add_child(
-        Text(
-            "This demo showcases the Video component of arepy-ui with full playback controls, "
-            "responsive layout using vh/vw units, ScrollView for long content, and a clean "
-            "YouTube-inspired design. All built with Python!",
-            size=14,
-            color=Color(200, 200, 200, 255),
+        ui_text(
+            "124K views  5 days ago  #python  #gamedev  #ui",
+            13,
+            TEXT_PRIMARY,
+            role="meta",
         )
     )
-    desc_box.add_child(Text("Show more", size=13, color=Color(150, 150, 150, 255)))
+    desc_box.add_child(
+        ui_text(
+            "This demo showcases multiple fonts, a YouTube-inspired layout, custom video controls, "
+            "responsive sidebars, and long-form content built entirely with arepy-ui components.",
+            14,
+            Color(215, 215, 215, 255),
+            role="body",
+        )
+    )
+    desc_box.add_child(ui_text("Show more", 13, TEXT_SECONDARY, role="meta"))
     main_scroll_content.add_child(desc_box)
-
-    # Comments section
-    main_scroll_content.add_child(Divider(color=Color(50, 50, 50, 255)))
 
     comments_header = Node(
         style=Style(
@@ -406,47 +570,70 @@ def create_ui(video_path: str) -> Node:
             height=Unit.auto(),
             flex_direction=FlexDirection.ROW,
             align_items=AlignItems.CENTER,
-            gap=24,
-            padding=Spacing.symmetric(vertical=16, horizontal=0),
+            gap=16,
+            padding=Spacing.symmetric(vertical=8, horizontal=0),
         )
     )
-    comments_header.add_child(
-        Text("128 Comments", size=16, color=Color(255, 255, 255, 255))
-    )
-    comments_header.add_child(Text("Sort by", size=13, color=Color(150, 150, 150, 255)))
+    comments_header.add_child(ui_text("128 Comments", 18, TEXT_PRIMARY, role="body"))
+    comments_header.add_child(ui_text("Sort by", 13, TEXT_SECONDARY, role="meta"))
     main_scroll_content.add_child(comments_header)
 
-    # Comments
+    add_comment_row = Node(
+        style=Style(
+            width=Unit.percent(100),
+            height=Unit.auto(),
+            flex_direction=FlexDirection.ROW,
+            align_items=AlignItems.CENTER,
+            gap=12,
+            padding=Spacing.symmetric(vertical=8, horizontal=0),
+        )
+    )
+    add_comment_row.add_child(create_icon_avatar("AU", Color(151, 93, 186, 255)))
+    comment_input = TextInput(
+        placeholder="Add a comment...",
+        width=Unit.percent(100),
+        height=Unit.px(40),
+        font_size=14,
+        style=Style(
+            background_color=BG,
+            border_color=SURFACE_BORDER,
+            border_width=0.0,
+            border_radius=0.0,
+            padding=Spacing.symmetric(vertical=10, horizontal=0),
+        ),
+    )
+    comment_input.text_color = TEXT_PRIMARY
+    comment_input.placeholder_color = TEXT_TERTIARY
+    comment_input.default_border_color = BG
+    comment_input.focused_border_color = BG
+    add_comment_row.add_child(comment_input)
+    main_scroll_content.add_child(add_comment_row)
+    main_scroll_content.add_child(Divider(color=Color(50, 50, 50, 255)))
+
     comments_data = [
         (
             "@pythondev",
-            "This is exactly what I needed! Great work on the UI framework.",
+            "This is exactly what I needed. The new font hierarchy makes the demo feel much closer to a real video platform.",
             "245",
             "2 hours ago",
         ),
         (
             "@gamedev_pro",
-            "The video controls are smooth. How did you handle the frame timing?",
+            "The seek behavior is much better now. Audio and video recover way faster after scrubbing.",
             "89",
             "5 hours ago",
         ),
         (
             "@ui_enthusiast",
-            "Love the attention to detail on the scrollbars and hover effects!",
+            "Love the cleaner header, action chips, and the updated related cards layout.",
             "156",
             "1 day ago",
         ),
         (
             "@coding_wizard",
-            "Finally a good UI library for Python games. Subscribed!",
+            "Python UI demos rarely look this polished. Great progress.",
             "312",
             "2 days ago",
-        ),
-        (
-            "@learner2025",
-            "Could you make a tutorial series on building this from scratch?",
-            "67",
-            "3 days ago",
         ),
     ]
 
@@ -474,56 +661,66 @@ def create_ui(video_path: str) -> Node:
             width=Unit.percent(100),
             height=Unit.auto(),
             flex_direction=FlexDirection.COLUMN,
-            gap=12,
+            gap=14,
         )
     )
 
+    chips_row = Node(
+        style=Style(
+            width=Unit.percent(100),
+            height=Unit.auto(),
+            flex_direction=FlexDirection.ROW,
+            gap=8,
+        )
+    )
+    chips_row.add_child(create_chip("All", active=True))
+    chips_row.add_child(create_chip("Python"))
+    chips_row.add_child(create_chip("UI"))
+    chips_row.add_child(create_chip("Gamedev"))
+    sidebar_scroll_content.add_child(chips_row)
+
     sidebar_scroll_content.add_child(
-        Text("Related Videos", size=14, color=Color(150, 150, 150, 255))
+        ui_text("Up next", 14, TEXT_SECONDARY, role="meta")
     )
 
-    # Videos relacionados
     related = [
         (
             "Python Game Development - Complete Course 2025",
             "GameDev Academy",
-            "892K views  2 weeks",
+            "892K views  2 weeks ago",
             "2:15:30",
         ),
         (
             "Building UIs with Flexbox - Deep Dive",
             "CSS Master",
-            "234K views  1 month",
+            "234K views  1 month ago",
             "45:12",
         ),
         (
-            "Raylib - Performance Comparison",
+            "Raylib Performance Comparison",
             "Code Compare",
-            "156K views  3 days",
+            "156K views  3 days ago",
             "18:45",
         ),
         (
             "Create a Music Player in Python",
             "PyTutorials",
-            "67K views  1 week",
+            "67K views  1 week ago",
             "32:20",
         ),
         (
             "Advanced Python Patterns for Games",
             "Pro Coder",
-            "445K views  2 months",
+            "445K views  2 months ago",
             "1:05:00",
         ),
-        ("UI Animation Techniques", "Motion Design", "123K views  5 days", "28:15"),
-        ("Python Performance Tips 2025", "Speed Demon", "89K views  1 day", "22:40"),
+        ("UI Animation Techniques", "Motion Design", "123K views  5 days ago", "28:15"),
         (
-            "Building a Video Editor in Python",
-            "Creative Code",
-            "234K views  2 weeks",
-            "1:45:00",
+            "Python Performance Tips 2025",
+            "Speed Demon",
+            "89K views  1 day ago",
+            "22:40",
         ),
-        ("The Future of Python GUIs", "Tech Talk", "178K views  4 days", "35:50"),
-        ("Responsive Design Principles", "UI/UX Pro", "92K views  1 week", "41:30"),
     ]
 
     for title, channel, views, duration in related:
@@ -551,22 +748,22 @@ def ui_update_system(renderer: Renderer2D, input: Input, display: Display):
 
 
 def ui_render_system(renderer: Renderer2D):
-    global ui_manager, ui_debugger
+    global ui_manager
     ui_manager.render()
-    if ui_debugger:
-        ui_debugger.render(ui_manager.root)
 
 
 def setup_system(game: ArepyEngine):
-    global ui_manager, ui_debugger
+    global ui_manager
 
     ui_manager = UIManager.from_engine(
         game,
         config=UIConfig(
             resize_mode=ResizeMode.RESPONSIVE,
+            font_texture_filter=TextureFilter.NEAREST,
         ),
     )
-    ui_debugger = UIDebugger()
+
+    setup_demo_fonts()
 
     video_path = "examples/assets/dispatch.mp4"
     root = create_ui(video_path)
@@ -574,6 +771,7 @@ def setup_system(game: ArepyEngine):
 
     print("YouTube-style Video Player Demo")
     print("================================")
+    print("- Loads multiple font roles with platform fallbacks")
     print("- Resize window to test responsive layout")
     print("- Scroll in main content and sidebar")
     print("- Press F3 for debug overlay")

@@ -2,9 +2,6 @@
 
 Using AUI/ACSS markup files.
 
-<!-- TODO: Add markup demo screenshot -->
-![Markup Demo](../../assets/examples/markup-demo.png)
-
 ## Overview
 
 This example shows how to build UI with declarative markup instead of Python code.
@@ -133,23 +130,21 @@ def setup(game: ArepyEngine):
     
     ui_manager = UIManager.from_engine(game, config=UIConfig())
     
-    # Load AUI with context
-    root = load_aui("assets/ui/menu.aui", context={
+    # Load AUI with handlers
+    result = load_aui("assets/ui/menu.aui", handlers={
         # Event handlers
         "new_game": new_game,
         "continue_game": continue_game,
         "options": options,
         "quit": quit,
-        # Data
-        "game_title": "My Game",
-        "version": "1.0.0",
     })
-    
-    ui_manager.set_root(root)
+
+    if result.success and result.root is not None:
+        ui_manager.set_root(result.root)
     game.add_resource(ui_manager)
 
-def update():
-    ui_manager.update()
+def update(game: ArepyEngine):
+    ui_manager.update(game.get_delta_time())
 
 def draw():
     ui_manager.render()
@@ -165,17 +160,9 @@ game.run()
 
 ## Key Concepts
 
-### Context Variables
+### Dynamic Data
 
-Pass data to markup with `{variable}` syntax:
-
-```html
-<text>{player_name}</text>
-```
-
-```python
-load_aui("file.aui", context={"player_name": "Hero"})
-```
+The current loader maps callbacks through `handlers=`. For dynamic values, build the text in Python or rebuild the UI tree when your state changes.
 
 ### Event Handlers
 
@@ -186,7 +173,7 @@ Reference functions by name:
 ```
 
 ```python
-load_aui("file.aui", context={"my_handler": my_function})
+load_aui("file.aui", handlers={"my_handler": my_function})
 ```
 
 ### CSS Variables

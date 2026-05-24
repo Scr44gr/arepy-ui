@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "arepy-ui"
 description = "An open-source ui library for arepy"
 authors = [{ name = "Abrahan Gil", email = "scr44gr@protonmail.com" }]
-license = { file = "LICENSE" }
+license = "MIT"
 classifiers = [
     'Development Status :: 3 - Alpha',
     'Programming Language :: Python :: 3.11',
@@ -18,8 +18,8 @@ classifiers = [
     'Operating System :: MacOS :: MacOS X',
 ]
 keywords = ['arepy', 'ui', 'library', 'python']
-requires-python = ">=3.10"
-dependencies = ["arepy"]
+requires-python = ">=3.11"
+dependencies = ["arepy==0.5.5"]
 dynamic = ['version']
 readme = "README.md"
 
@@ -31,6 +31,7 @@ docs = [
     "mkdocs-glightbox",
     "mkdocs-git-revision-date-localized-plugin",
     "mkdocs-minify-plugin",
+    "mkdocstrings[python]>=0.28",
 ]
 markup = ["cython>=3.0"]
 
@@ -97,8 +98,8 @@ before-build = "pip install cython>=3.0"
 [tool.cibuildwheel.windows]
 before-build = "pip install cython>=3.0"
 
-[tool.uv.sources]
-arepy = { git = "https://github.com/Scr44gr/arepy", rev = "main" }
+[tool.uv]
+package = true
 
 [tool.ty.environment]
 root = ["./"]

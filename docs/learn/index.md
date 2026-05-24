@@ -12,7 +12,7 @@ Welcome to the arepy-ui learning path! This section will teach you everything yo
 
     Get arepy-ui installed in your project in under 2 minutes.
 
-    [:octicons-arrow-right-24: Install now](installation.md)
+    [:octicons-arrow-right-24: Install now](getting-started.md#installation)
 
 -   :material-rocket-launch:{ .lg .middle } **Quick Start**
 
@@ -20,7 +20,7 @@ Welcome to the arepy-ui learning path! This section will teach you everything yo
 
     Create your first UI in 5 minutes with a simple example.
 
-    [:octicons-arrow-right-24: Quick Start](quickstart.md)
+    [:octicons-arrow-right-24: Quick Start](getting-started.md#quick-start)
 
 -   :material-school:{ .lg .middle } **Your First UI**
 
@@ -45,8 +45,8 @@ graph LR
 ### 1. Getting Started
 Start here if you're new to arepy-ui:
 
-- [Installation](installation.md) - Install the library
-- [Quick Start](quickstart.md) - Your first "Hello World"
+- [Installation](getting-started.md#installation) - Install the library
+- [Quick Start](getting-started.md#quick-start) - Your first "Hello World"
 - [Your First UI](first-ui.md) - Build a complete interface
 
 ### 2. Core Concepts

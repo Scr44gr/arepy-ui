@@ -3,11 +3,15 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from arepy.ecs.systems import SystemPipeline
+from arepy.ecs.world import World
+from arepy.engine.input import Key
+from arepy.engine.time import Time
 
 from arepy_ui.config import ResizeMode, UIConfig
 from arepy_ui.core.node import Node
 from arepy_ui.core.style import Style
-from arepy_ui.core.types import Unit
+from arepy_ui.core.types import FlexDirection, Unit
 
 
 @pytest.fixture
@@ -17,12 +21,15 @@ def mock_runtime():
     mock.display.get_window_size.return_value = (1280, 720)
     mock.renderer.get_font_default.return_value = MagicMock()
     mock.renderer.is_stencil_available.return_value = True
+    mock.renderer.measure_text_ex.return_value = (100.0, 20.0)
     mock.input.get_mouse_position.return_value = (0, 0)
     mock.input.is_mouse_button_pressed.return_value = False
 
     with patch("arepy_ui.manager.get_runtime", return_value=mock):
         with patch("arepy_ui.runtime.get_runtime", return_value=mock):
-            yield mock
+            with patch("arepy_ui.core.node.get_runtime", return_value=mock):
+                with patch("arepy_ui.core.fonts.get_runtime", return_value=mock):
+                    yield mock
 
 
 class TestUIManager:
@@ -68,6 +75,10 @@ class TestUIManager:
         manager.mark_dirty()
 
         assert manager.is_dirty, "is_dirty should be True after mark_dirty"
+        assert (
+            manager._dirty_layout_root is None
+            or manager._dirty_layout_root is manager.root
+        )
 
     def test_get_reference_size(self, mock_runtime):
         from arepy_ui.manager import UIManager
@@ -116,6 +127,248 @@ class TestUIManager:
 
                 # Verify manager was created with config
                 assert manager.config.resize_mode == ResizeMode.RESPONSIVE
+
+    def test_from_world(self, mock_runtime):
+        """Test creating UIManager from a World's shared resources."""
+        from arepy_ui.manager import UIManager
+
+        mock_world = MagicMock()
+        renderer = MagicMock()
+        input_device = MagicMock()
+        display = MagicMock()
+        asset_store = MagicMock()
+        audio_device = MagicMock()
+
+        def get_resource(resource_type):
+            resources = {
+                "Renderer2D": renderer,
+                "Input": input_device,
+                "Display": display,
+                "AssetStore": asset_store,
+                "AudioDevice": audio_device,
+            }
+            return resources[resource_type.__name__]
+
+        mock_world.get_resource.side_effect = get_resource
+
+        with patch("arepy_ui.manager.configure_runtime") as mock_configure:
+            manager = UIManager.from_world(mock_world, config=UIConfig())
+
+        mock_configure.assert_called_once_with(
+            renderer=renderer,
+            input=input_device,
+            display=display,
+            asset_store=asset_store,
+            audio_device=audio_device,
+        )
+        assert manager.config is not None
+
+    def test_install_registers_resource_and_systems(self, mock_runtime):
+        from arepy_ui.manager import (
+            UIManager,
+            _world_render_system,
+            _world_update_system,
+        )
+
+        mock_world = MagicMock()
+        renderer = MagicMock()
+        input_device = MagicMock()
+        display = MagicMock()
+
+        def get_resource(resource_type):
+            resources = {
+                "Renderer2D": renderer,
+                "Input": input_device,
+                "Display": display,
+            }
+            if resource_type.__name__ not in resources:
+                raise KeyError(resource_type.__name__)
+            return resources[resource_type.__name__]
+
+        mock_world.get_resource.side_effect = get_resource
+        root = Node(style=Style(width=Unit.px(100), height=Unit.px(50)))
+
+        manager = UIManager.install(mock_world, root=root, config=UIConfig())
+
+        mock_world.add_resource.assert_called_once_with(manager)
+        assert mock_world.add_system.call_count == 2
+        assert mock_world.add_system.call_args_list[0].args == (
+            SystemPipeline.UPDATE,
+            _world_update_system,
+        )
+        assert mock_world.add_system.call_args_list[1].args == (
+            SystemPipeline.RENDER_UI,
+            _world_render_system,
+        )
+        assert manager.root is root
+
+    def test_update_system_uses_injected_time_and_input(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+        manager.update = MagicMock()
+
+        time = Time(0.0)
+        time.delta_seconds = 0.25
+        input_device = MagicMock()
+        input_device.get_mouse_wheel_delta.return_value = -2.0
+
+        manager.update_system(time, input_device)
+
+        manager.update.assert_called_once_with(0.25, wheel_scroll=-2.0)
+
+    def test_installed_world_system_receives_ui_manager_resources(self, mock_runtime):
+        from arepy_ui.manager import UIManager, _world_update_system
+
+        time = Time(0.0)
+        time.delta_seconds = 0.5
+        input_device = MagicMock()
+        input_device.get_mouse_wheel_delta.return_value = 1.25
+        world = World(
+            "test",
+            global_resources={
+                "Time": time,
+                "Input": input_device,
+            },
+        )
+
+        manager = UIManager()
+        manager.update = MagicMock()
+        world.add_resource(manager)
+        world.add_system(SystemPipeline.UPDATE, _world_update_system)
+
+        world.get_registry().run(SystemPipeline.UPDATE)
+
+        manager.update.assert_called_once_with(0.5, wheel_scroll=1.25)
+
+    def test_update_toggles_integrated_debugger_with_default_key(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+        mock_runtime.input.is_key_pressed.side_effect = lambda key: key == Key.F3
+
+        manager.update(0.016)
+
+        assert manager.get_debugger().enabled is True
+
+    def test_set_debug_toggle_key_uses_custom_key(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+        manager.set_debug_toggle_key(Key.F2)
+        mock_runtime.input.is_key_pressed.side_effect = lambda key: key == Key.F2
+
+        manager.update(0.016)
+
+        assert manager.get_debugger().enabled is True
+        assert manager.get_debugger().toggle_hotkey_label == "F2"
+
+    def test_render_calls_integrated_debugger(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+        root = Node(style=Style(width=Unit.px(100), height=Unit.px(60)))
+        manager.set_root(root)
+        manager.enable_debug_overlay(True)
+        manager.get_debugger().render = MagicMock()  # type: ignore
+
+        with patch("arepy_ui.core.node.get_runtime", return_value=mock_runtime):
+            manager.render()
+
+        manager.get_debugger().render.assert_called_once_with(root)  # type: ignore
+
+    def test_config_can_start_with_debug_enabled(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager(UIConfig(debug_enabled=True))
+
+        assert manager.get_debugger().enabled is True
+
+    def test_debugger_props_handle_video_string_state(self, mock_runtime):
+        from arepy_ui.components.video import Video, VideoState
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+        video = Video(source="demo.mp4", controls=False)
+        video._state = VideoState.PLAYING
+        video._duration = 12.34
+
+        props = manager.get_debugger()._get_component_props(video)
+
+        assert "state: playing" in props
+        assert "duration: 12.3s" in props
+
+    def test_debugger_frame_tracks_scrollview_visual_offset(self, mock_runtime):
+        from arepy_ui.components.scroll import ScrollView
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+
+        child = Node(style=Style(width=Unit.px(80), height=Unit.px(40)))
+        content = Node(
+            style=Style(
+                width=Unit.px(200),
+                height=Unit.px(400),
+                flex_direction=None,
+            ),
+            children=[child],
+        )
+        scrollview = ScrollView(
+            width=Unit.px(200),
+            height=Unit.px(120),
+            content=content,
+        )
+
+        manager.set_root(scrollview)
+        scrollview.scroll_y = -50
+        content.computed_x = 0
+        content.computed_y = 0
+        content.computed_width = 200
+        content.computed_height = 400
+        child.computed_x = 10
+        child.computed_y = 90
+        child.computed_width = 80
+        child.computed_height = 40
+
+        debugger = manager.get_debugger()
+        debugger._build_frame(scrollview)
+        frame = debugger._frame_index[child]
+
+        assert frame.rect == (10, 40, 80, 40)
+        assert frame.visible_rect == (10, 40, 80, 40)
+
+    def test_debugger_hover_respects_scrollview_clip(self, mock_runtime):
+        from arepy_ui.components.scroll import ScrollView
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+
+        child = Node(style=Style(width=Unit.px(100), height=Unit.px(40)))
+        content = Node(style=Style(width=Unit.px(200), height=Unit.px(300)))
+        content.add_child(child)
+        scrollview = ScrollView(
+            width=Unit.px(200),
+            height=Unit.px(100),
+            content=content,
+        )
+
+        manager.set_root(scrollview)
+        scrollview.scroll_y = -30
+        content.computed_x = 0
+        content.computed_y = 0
+        content.computed_width = 200
+        content.computed_height = 300
+        child.computed_x = 0
+        child.computed_y = 100
+        child.computed_width = 100
+        child.computed_height = 40
+
+        debugger = manager.get_debugger()
+        debugger._build_frame(scrollview)
+
+        assert debugger._frame_index[child].visible_rect == (0, 70, 100, 30)
+        assert debugger._find_node_at(10, 95) == child
+        assert debugger._find_node_at(150, 95) == content
 
 
 class TestUIManagerModals:
@@ -224,13 +477,13 @@ class TestFocusManagement:
 
         manager = UIManager()
         node1 = Node()
-        node1._on_blur = MagicMock() # type: ignore
+        node1._on_blur = MagicMock()  # type: ignore
         node2 = Node()
 
         manager.request_focus(node1)
         manager.request_focus(node2)
 
-        node1._on_blur.assert_called_once() # type: ignore
+        node1._on_blur.assert_called_once()  # type: ignore
         assert manager.get_focused_node() is node2
 
     def test_release_focus(self, mock_runtime):
@@ -273,12 +526,12 @@ class TestFocusManagement:
 
         manager = UIManager()
         node = Node()
-        node._on_blur = MagicMock() # type: ignore
+        node._on_blur = MagicMock()  # type: ignore
 
         manager.request_focus(node)
         manager.clear_focus()
 
-        node._on_blur.assert_called_once() # type: ignore
+        node._on_blur.assert_called_once()  # type: ignore
 
 
 class TestUIManagerUpdate:
@@ -343,21 +596,116 @@ class TestUIManagerUpdate:
     def test_update_resize_debounce(self, mock_runtime):
         from arepy_ui.manager import UIManager
 
-        config = UIConfig(layout_debounce_ms=100)
+        config = UIConfig(layout_debounce_ms=100, resize_mode=ResizeMode.RESPONSIVE)
         manager = UIManager(config=config)
-        manager.set_root(Node())
+        root = Node(style=Style(width=Unit.vw(50), height=Unit.vh(25)))
+        manager.set_root(root)
+
+        assert root.computed_width == 640
+        assert root.computed_height == 180
 
         # Simulate resize
         mock_runtime.display.get_window_size.return_value = (1920, 1080)
         manager.update(0.016)
 
-        # Should have pending resize
-        assert manager._pending_resize is True
+        # Layout should still be debounced
+        assert root.computed_width == 640
+        assert root.computed_height == 180
 
         # After debounce time passes
         manager.update(0.1)
 
-        assert manager._pending_resize is False
+        assert root.computed_width == 960
+        assert root.computed_height == 270
+
+
+class TestUIManagerPartialLayout:
+    def test_mark_dirty_node_merges_to_common_ancestor(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+        root = Node()
+        left = Node()
+        right = Node()
+        left_child = Node()
+        right_child = Node()
+
+        root.add_child(left)
+        root.add_child(right)
+        left.add_child(left_child)
+        right.add_child(right_child)
+
+        manager.set_root(root)
+        manager.mark_dirty_node(left)
+        manager.mark_dirty_node(right)
+
+        assert manager._dirty_layout_root is root
+
+    def test_recalculate_layout_uses_partial_root_when_available(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        class CountingNode(Node):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.layout_calls = 0
+
+            def calculate_layout(self, parent_x, parent_y, parent_width, parent_height):
+                self.layout_calls += 1
+                return super().calculate_layout(
+                    parent_x, parent_y, parent_width, parent_height
+                )
+
+        manager = UIManager()
+        root = CountingNode(style=Style(width=Unit.px(800), height=Unit.px(600)))
+        container = CountingNode(style=Style(width=Unit.px(200), height=Unit.px(100)))
+        child = CountingNode(style=Style(width=Unit.px(50), height=Unit.px(20)))
+        sibling = CountingNode(style=Style(width=Unit.px(60), height=Unit.px(20)))
+
+        root.add_child(container)
+        root.add_child(sibling)
+        container.add_child(child)
+
+        manager.set_root(root)
+
+        root.layout_calls = 0
+        container.layout_calls = 0
+        child.layout_calls = 0
+        sibling.layout_calls = 0
+
+        child.mark_dirty()
+        manager._recalculate_layout()
+
+        assert root.layout_calls == 0
+        assert container.layout_calls == 1
+        assert child.layout_calls == 1
+        assert sibling.layout_calls == 0
+
+    def test_partial_relayout_preserves_final_flex_position(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+        root = Node(
+            style=Style(
+                width=Unit.px(200),
+                height=Unit.px(200),
+                flex_direction=FlexDirection.COLUMN,
+                gap=10,
+            )
+        )
+        first = Node(style=Style(width=Unit.px(50), height=Unit.px(50)))
+        second = Node(style=Style(width=Unit.px(50), height=Unit.px(50)))
+
+        root.add_child(first)
+        root.add_child(second)
+
+        manager.set_root(root)
+
+        assert second.computed_y == 60
+
+        manager.mark_dirty_node(second)
+        manager._recalculate_layout()
+
+        assert second.computed_y == 60
 
     def test_update_click_clears_focus(self, mock_runtime):
         from arepy_ui.manager import UIManager
@@ -395,12 +743,12 @@ class TestUIManagerRender:
 
         manager = UIManager()
         root = Node()
-        root.render = MagicMock() # type: ignore
+        root.render = MagicMock()  # type: ignore
         manager.set_root(root)
 
         manager.render()
 
-        root.render.assert_called_once() # type: ignore
+        root.render.assert_called_once()  # type: ignore
 
     def test_render_initializes_stencil(self, mock_runtime):
         from arepy_ui.manager import UIManager
@@ -525,20 +873,16 @@ class TestTooltipSystem:
 
         # Create node with tooltip
         node = Node()
-        node.tooltip = "Test tooltip" # type: ignore
+        node.tooltip = "Test tooltip"  # type: ignore
         manager._hovered_node = node
 
-        # First update - timer starts, tooltip text set
-        manager._update_tooltip(Vector2(100, 100), 0.3)
-        manager._tooltip_text = (
-            "Test tooltip"  # Ensure text matches for timer increment
-        )
+        manager._update_tooltip(Vector2(100, 100))
         assert manager._tooltip_visible is False
 
-        # Manually set tooltip_timer to simulate time passing
-        manager._tooltip_timer = 0.3
-        # Second update with same tooltip text - timer exceeds delay
-        manager._update_tooltip(Vector2(100, 100), 0.3)
+        manager.timers.update(0.3)
+        assert manager._tooltip_visible is False
+
+        manager.timers.update(0.3)
         assert manager._tooltip_visible is True
 
     def test_update_tooltip_resets_on_change(self, mock_runtime):
@@ -549,22 +893,22 @@ class TestTooltipSystem:
         manager._tooltip_delay = 0.1
 
         node1 = Node()
-        node1.tooltip = "Tooltip 1" # type: ignore
+        node1.tooltip = "Tooltip 1"  # type: ignore
         manager._hovered_node = node1
 
-        # Set first tooltip manually and make it visible
-        manager._tooltip_text = "Tooltip 1"
-        manager._tooltip_timer = 0.2
-        manager._update_tooltip(Vector2(100, 100), 0.2)
+        manager._update_tooltip(Vector2(100, 100))
+        manager.timers.update(0.2)
         assert manager._tooltip_visible is True
 
         # Change to new tooltip
         node2 = Node()
-        node2.tooltip = "Tooltip 2" # type: ignore
+        node2.tooltip = "Tooltip 2"  # type: ignore
         manager._hovered_node = node2
 
-        manager._update_tooltip(Vector2(100, 100), 0.05)
-        # Timer should reset
+        manager._update_tooltip(Vector2(100, 100))
+        assert manager._tooltip_visible is False
+
+        manager.timers.update(0.05)
         assert manager._tooltip_visible is False
 
     def test_update_tooltip_clears_when_no_tooltip(self, mock_runtime):
@@ -574,20 +918,18 @@ class TestTooltipSystem:
         manager = UIManager()
 
         node = Node()
-        node.tooltip = "Test" # type: ignore
+        node.tooltip = "Test"  # type: ignore
         manager._hovered_node = node
         manager._tooltip_delay = 0.1
 
-        # Set tooltip visible manually
-        manager._tooltip_text = "Test"
-        manager._tooltip_timer = 0.2
-        manager._update_tooltip(Vector2(100, 100), 0.2)
+        manager._update_tooltip(Vector2(100, 100))
+        manager.timers.update(0.2)
         assert manager._tooltip_visible is True
 
         # Clear hovered node
         manager._hovered_node = Node()  # No tooltip
 
-        manager._update_tooltip(Vector2(100, 100), 0.016)
+        manager._update_tooltip(Vector2(100, 100))
         assert manager._tooltip_visible is False
 
 
@@ -653,19 +995,19 @@ class TestModalInput:
 
         manager = UIManager()
         root = Node()
-        root.handle_input = MagicMock(return_value=False) # type: ignore
+        root.handle_input = MagicMock(return_value=False)  # type: ignore
         manager.set_root(root)
 
         modal = Node(style=Style(width=Unit.px(100), height=Unit.px(100)))
-        modal.handle_input = MagicMock(return_value=True) # type: ignore
+        modal.handle_input = MagicMock(return_value=True)  # type: ignore
         manager.show_modal(modal)
 
         mock_runtime.input.get_mouse_position.return_value = (50, 50)
         manager.update(0.016)
 
         # Modal handles input, root does not
-        modal.handle_input.assert_called() # type: ignore
-        root.handle_input.assert_not_called() # type: ignore
+        modal.handle_input.assert_called()  # type: ignore
+        root.handle_input.assert_not_called()  # type: ignore
 
     def test_click_outside_modal_closes(self, mock_runtime):
         from arepy_ui.manager import UIManager
@@ -715,6 +1057,7 @@ class TestResizeModes:
         manager._handle_resize()
 
         assert manager.is_dirty is True
+        assert manager._dirty_layout_root is manager.root
 
     def test_handle_resize_fixed(self, mock_runtime):
         from arepy_ui.manager import UIManager
@@ -748,6 +1091,25 @@ class TestResizeModes:
         manager._handle_resize()
 
         assert manager.is_dirty is True
+        assert manager._dirty_layout_root is manager.root
+
+    def test_handle_resize_overrides_partial_dirty_root(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        config = UIConfig(resize_mode=ResizeMode.RESPONSIVE)
+        manager = UIManager(config=config)
+        root = Node()
+        child = Node()
+        root.add_child(child)
+        manager.set_root(root)
+
+        manager.mark_dirty_node(child)
+        assert manager._dirty_layout_root is child
+
+        manager._handle_resize()
+
+        assert manager.is_dirty is True
+        assert manager._dirty_layout_root is root
 
     def test_update_with_scale_mode_transforms_mouse(self, mock_runtime):
         from arepy_ui.manager import UIManager
@@ -759,7 +1121,7 @@ class TestResizeModes:
         )
         manager = UIManager(config=config)
         root = Node()
-        root.handle_input = MagicMock(return_value=False) # type: ignore
+        root.handle_input = MagicMock(return_value=False)  # type: ignore
         manager.set_root(root)
 
         mock_runtime.input.get_mouse_position.return_value = (640, 360)
@@ -767,7 +1129,26 @@ class TestResizeModes:
         manager.update(0.016)
 
         # Just verify update doesn't crash with scale mode
-        root.handle_input.assert_called() # type: ignore
+        root.handle_input.assert_called()  # type: ignore
+
+    def test_resize_updates_viewport_units_layout(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+        from unittest.mock import patch
+
+        with patch("arepy_ui.core.node.get_runtime", return_value=mock_runtime):
+            config = UIConfig(resize_mode=ResizeMode.RESPONSIVE)
+            manager = UIManager(config=config)
+            root = Node(style=Style(width=Unit.vw(50), height=Unit.vh(25)))
+            manager.set_root(root)
+
+            assert root.computed_width == 640
+            assert root.computed_height == 180
+
+            mock_runtime.display.get_window_size.return_value = (1920, 1080)
+            manager.update(0.016)
+
+            assert root.computed_width == 960
+            assert root.computed_height == 270
 
 
 class TestLayoutCallbacks:
@@ -877,48 +1258,48 @@ class TestRenderModals:
 
         manager = UIManager()
         modal = Node()
-        modal._has_backdrop = True # type: ignore
-        modal.render = MagicMock() # type: ignore
+        modal._has_backdrop = True  # type: ignore
+        modal.render = MagicMock()  # type: ignore
         manager._modals = [modal]
 
         with patch("arepy_ui.manager.get_runtime", return_value=mock_runtime):
             manager._render_modals()
 
         mock_runtime.renderer.draw_rectangle.assert_called()
-        modal.render.assert_called_once() # type: ignore
+        modal.render.assert_called_once()  # type: ignore
 
     def test_render_modals_without_backdrop(self, mock_runtime):
         from arepy_ui.manager import UIManager
 
         manager = UIManager()
         modal = Node()
-        modal._has_backdrop = False # type: ignore
-        modal.render = MagicMock() # type: ignore
+        modal._has_backdrop = False  # type: ignore
+        modal.render = MagicMock()  # type: ignore
         manager._modals = [modal]
 
         with patch("arepy_ui.manager.get_runtime", return_value=mock_runtime):
             manager._render_modals()
 
         mock_runtime.renderer.draw_rectangle.assert_not_called()
-        modal.render.assert_called_once() # type: ignore
+        modal.render.assert_called_once()  # type: ignore
 
     def test_render_multiple_modals(self, mock_runtime):
         from arepy_ui.manager import UIManager
 
         manager = UIManager()
         modal1 = Node()
-        modal1._has_backdrop = True # type: ignore
-        modal1.render = MagicMock() # type: ignore
+        modal1._has_backdrop = True  # type: ignore
+        modal1.render = MagicMock()  # type: ignore
         modal2 = Node()
-        modal2._has_backdrop = True # type: ignore
-        modal2.render = MagicMock() # type: ignore
+        modal2._has_backdrop = True  # type: ignore
+        modal2.render = MagicMock()  # type: ignore
         manager._modals = [modal1, modal2]
 
         with patch("arepy_ui.manager.get_runtime", return_value=mock_runtime):
             manager._render_modals()
 
-        modal1.render.assert_called_once() # type: ignore
-        modal2.render.assert_called_once() # type: ignore
+        modal1.render.assert_called_once()  # type: ignore
+        modal2.render.assert_called_once()  # type: ignore
         assert mock_runtime.renderer.draw_rectangle.call_count == 2
 
 
@@ -932,7 +1313,9 @@ class TestScrollViewCursorAdjustment:
 
         # Create a ScrollView with a child
         content = Node()
-        scrollview = ScrollView(width=Unit.px(200), height=Unit.px(200), content=content)
+        scrollview = ScrollView(
+            width=Unit.px(200), height=Unit.px(200), content=content
+        )
         scrollview.computed_x = 0
         scrollview.computed_y = 0
         scrollview.computed_width = 200

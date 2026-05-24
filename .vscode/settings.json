@@ -1,0 +1,7 @@
+{
+  "python.analysis.exclude": [
+    "**/*.pyx",
+    "**/*.pxd"
+  ],
+  "python.analysis.stubPath": "."
+}

@@ -1,13 +1,23 @@
+from dataclasses import dataclass
 from typing import Optional, cast
 
 from arepy.engine.renderer import Rect
 
+from .components.scroll import ScrollView
 from .components.text import Text
 from .core.node import Node
 from .core.style import Spacing
 from .core.types import Color, FlexDirection, Unit
 from .registry import get_registry
 from .runtime import get_runtime
+
+
+@dataclass
+class DebugFrameNode:
+    node: Node
+    depth: int
+    rect: tuple[int, int, int, int]
+    visible_rect: Optional[tuple[int, int, int, int]]
 
 
 class UIDebugger:
@@ -35,10 +45,33 @@ class UIDebugger:
         self.show_padding = False
         self.show_info = True
         self.show_tree = False
+        self.toggle_hotkey_label = "F3"
+        self.bounds_hotkey_label = "F4"
+        self.padding_hotkey_label = "F5"
+        self.tree_hotkey_label = "F6"
         self.hovered_node: Optional[Node] = None
         self._font_size = 11
         self._line_height = 14
         self._tree_scroll = 0
+        self._frame_nodes: list[DebugFrameNode] = []
+        self._frame_index: dict[Node, DebugFrameNode] = {}
+        self._color_cache: dict[str, Color] = {}
+
+    def set_hotkey_labels(
+        self,
+        toggle: Optional[str] = None,
+        bounds: Optional[str] = None,
+        padding: Optional[str] = None,
+        tree: Optional[str] = None,
+    ):
+        if toggle is not None:
+            self.toggle_hotkey_label = toggle
+        if bounds is not None:
+            self.bounds_hotkey_label = bounds
+        if padding is not None:
+            self.padding_hotkey_label = padding
+        if tree is not None:
+            self.tree_hotkey_label = tree
 
     def toggle(self):
         """Toggle debug overlay on/off."""
@@ -63,10 +96,11 @@ class UIDebugger:
 
         runtime = get_runtime()
         mx, my = runtime.input.get_mouse_position()
-        self.hovered_node = self._find_node_at(root, mx, my)
+        self._build_frame(root)
+        self.hovered_node = self._find_node_at(mx, my)
 
         if self.show_bounds:
-            self._render_node_debug(root, depth=0)
+            self._render_node_debug(runtime)
 
         if self.hovered_node and self.show_info:
             self._render_node_info(self.hovered_node, mx, my)
@@ -80,65 +114,154 @@ class UIDebugger:
         """Get color based on component type."""
 
         class_name = node.__class__.__name__
+        cached = self._color_cache.get(class_name)
+        if cached is not None:
+            return cached
+
         meta = get_registry().get(class_name)
         if meta:
-            return meta.get_debug_color(180)
-        return Color(150, 150, 150, 180)
+            color = meta.get_debug_color(180)
+        else:
+            color = Color(150, 150, 150, 180)
 
-    def _find_node_at(self, node: Node, x: float, y: float) -> Optional[Node]:
-        """Find the deepest node at the given position."""
-        if not node.style.visible:
-            return None
+        self._color_cache[class_name] = color
+        return color
 
-        if not (
-            node.computed_x <= x < node.computed_x + node.computed_width
-            and node.computed_y <= y < node.computed_y + node.computed_height
-        ):
-            return None
+    def _build_frame(self, root: Node) -> None:
+        self._frame_nodes = []
+        self._frame_index = {}
+        self._collect_frame_nodes(root, depth=0)
 
-        for child in reversed(node.children):
-            result = self._find_node_at(child, x, y)
-            if result:
-                return result
-
-        return node
-
-    def _render_node_debug(self, node: Node, depth: int):
-        """Recursively render debug info for a node."""
+    def _collect_frame_nodes(
+        self,
+        node: Node,
+        depth: int,
+        offset_x: float = 0.0,
+        offset_y: float = 0.0,
+        clip_rect: Optional[tuple[float, float, float, float]] = None,
+    ) -> None:
         if not node.style.visible:
             return
 
-        runtime = get_runtime()
-        x, y = int(node.computed_x), int(node.computed_y)
-        w, h = int(node.computed_width), int(node.computed_height)
+        rect = (
+            node.computed_x + offset_x,
+            node.computed_y + offset_y,
+            node.computed_width,
+            node.computed_height,
+        )
+        visible_rect = self._intersect_rect(rect, clip_rect)
 
-        if w <= 0 or h <= 0:
-            return
+        frame_node = DebugFrameNode(
+            node=node,
+            depth=depth,
+            rect=self._rect_to_int_tuple(rect),
+            visible_rect=(
+                self._rect_to_int_tuple(visible_rect)
+                if visible_rect is not None
+                else None
+            ),
+        )
+        self._frame_nodes.append(frame_node)
+        self._frame_index[node] = frame_node
 
-        color = self._get_component_color(node)
-        border_color = Color(color.r, color.g, color.b, 200)
-
-        if self.show_padding and node.style.padding:
-            self._render_padding(node, runtime)
-
-        runtime.renderer.draw_rectangle_lines_ex(Rect(x, y, w, h), 1, border_color)  # type: ignore
-
-        if node == self.hovered_node:
-            highlight = Color(255, 255, 100, 50)
-            runtime.renderer.draw_rectangle(Rect(x, y, w, h), highlight)  # type: ignore
-            runtime.renderer.draw_rectangle_lines_ex(
-                Rect(x, y, w, h),
-                2,
-                self.ACCENT_YELLOW,  # type: ignore
-            )
+        next_clip = clip_rect
+        scroll_clip = self._intersect_rect(rect, clip_rect)
 
         for child in node.children:
-            self._render_node_debug(child, depth + 1)
+            child_offset_x = offset_x
+            child_offset_y = offset_y
+            child_clip = next_clip
 
-    def _render_padding(self, node: Node, runtime):
+            if isinstance(node, ScrollView) and child is node.content:
+                child_offset_y += node.scroll_y
+                child_clip = scroll_clip
+
+            self._collect_frame_nodes(
+                child,
+                depth + 1,
+                child_offset_x,
+                child_offset_y,
+                child_clip,
+            )
+
+    def _intersect_rect(
+        self,
+        rect: tuple[float, float, float, float],
+        clip_rect: Optional[tuple[float, float, float, float]],
+    ) -> Optional[tuple[float, float, float, float]]:
+        x, y, w, h = rect
+        if w <= 0 or h <= 0:
+            return None
+
+        if clip_rect is None:
+            return rect
+
+        clip_x, clip_y, clip_w, clip_h = clip_rect
+        left = max(x, clip_x)
+        top = max(y, clip_y)
+        right = min(x + w, clip_x + clip_w)
+        bottom = min(y + h, clip_y + clip_h)
+
+        width = right - left
+        height = bottom - top
+        if width <= 0 or height <= 0:
+            return None
+
+        return (left, top, width, height)
+
+    def _rect_to_int_tuple(
+        self, rect: tuple[float, float, float, float]
+    ) -> tuple[int, int, int, int]:
+        x, y, w, h = rect
+        return (int(x), int(y), int(w), int(h))
+
+    def _find_node_at(self, x: float, y: float) -> Optional[Node]:
+        """Find the deepest visible node at the given screen position."""
+        for frame_node in reversed(self._frame_nodes):
+            visible_rect = frame_node.visible_rect
+            if visible_rect is None:
+                continue
+
+            rect_x, rect_y, rect_w, rect_h = visible_rect
+            if rect_x <= x < rect_x + rect_w and rect_y <= y < rect_y + rect_h:
+                return frame_node.node
+
+        return None
+
+    def _render_node_debug(self, runtime):
+        """Render debug bounds for the current visual frame."""
+        for frame_node in self._frame_nodes:
+            visible_rect = frame_node.visible_rect
+            if visible_rect is None:
+                continue
+
+            node = frame_node.node
+            x, y, w, h = visible_rect
+            if w <= 0 or h <= 0:
+                continue
+
+            color = self._get_component_color(node)
+            border_color = Color(color.r, color.g, color.b, 200)
+
+            if self.show_padding and node.style.padding:
+                self._render_padding(node, runtime, frame_node)
+
+            runtime.renderer.draw_rectangle_lines_ex(
+                Rect(x, y, w, h), 1, border_color
+            )  # type: ignore
+
+            if node == self.hovered_node:
+                highlight = Color(255, 255, 100, 50)
+                runtime.renderer.draw_rectangle(Rect(x, y, w, h), highlight)  # type: ignore
+                runtime.renderer.draw_rectangle_lines_ex(
+                    Rect(x, y, w, h),
+                    2,
+                    self.ACCENT_YELLOW,  # type: ignore
+                )
+
+    def _render_padding(self, node: Node, runtime, frame_node: DebugFrameNode):
         """Render padding visualization."""
-        x, y = int(node.computed_x), int(node.computed_y)
-        w, h = int(node.computed_width), int(node.computed_height)
+        x, y, w, h = frame_node.rect
 
         p = node.style.padding
         if not p:
@@ -168,18 +291,28 @@ class UIDebugger:
         """Render detailed info panel for a node."""
         runtime = get_runtime()
         class_name = node.__class__.__name__
+        frame_node = self._frame_index.get(node)
 
         sections = []
 
-        header = [f"◆ {class_name}"]
+        header = [f"> {class_name}"]
         if hasattr(node, "id") and node.id:
             header.append(f"  #{node.id}")
         sections.append(("header", header))
 
         layout_info = [
-            f"Position: ({node.computed_x:.0f}, {node.computed_y:.0f})",
-            f"Size: {node.computed_width:.0f} × {node.computed_height:.0f}",
+            f"Layout: ({node.computed_x:.0f}, {node.computed_y:.0f})",
+            f"Size: {node.computed_width:.0f} x {node.computed_height:.0f}",
         ]
+        if frame_node is not None:
+            screen_x, screen_y, _, _ = frame_node.rect
+            layout_info.insert(0, f"Screen: ({screen_x}, {screen_y})")
+            if (
+                frame_node.visible_rect is not None
+                and frame_node.visible_rect != frame_node.rect
+            ):
+                _, _, visible_w, visible_h = frame_node.visible_rect
+                layout_info.append(f"Visible: {visible_w} x {visible_h}")
         sections.append(("Layout", layout_info))
 
         style_info = []
@@ -266,7 +399,7 @@ class UIDebugger:
         elif class_name == "Video":
             state = getattr(node, "_state", None)
             if state is not None:
-                props.append(f"state: {state.name}")
+                props.append(f"state: {self._format_debug_value(state)}")
             duration = getattr(node, "_duration", None)
             if duration is not None:
                 props.append(f"duration: {duration:.1f}s")
@@ -285,6 +418,18 @@ class UIDebugger:
                 props.append(f"selected: {selected}")
 
         return props
+
+    def _format_debug_value(self, value) -> str:
+        """Format debug values safely for display."""
+        if hasattr(value, "name"):
+            return str(value.name)
+        return str(value)
+
+    def _measure_text_width(self, runtime, text: str, font_size: int) -> int:
+        try:
+            return int(runtime.renderer.measure_text(text, font_size))
+        except Exception:
+            return len(text) * 7
 
     def _format_unit(self, unit: Unit) -> str:
         """Format a Unit value for display."""
@@ -328,7 +473,7 @@ class UIDebugger:
                 total_height += section_gap
 
             for line in lines:
-                text_width = len(line) * 7
+                text_width = self._measure_text_width(runtime, line, self._font_size)
                 max_width = max(max_width, text_width)
 
         panel_w = max_width + padding * 2 + 10
@@ -361,7 +506,7 @@ class UIDebugger:
                 for line in lines:
                     color = (
                         self.ACCENT_BLUE
-                        if line.startswith("◆")
+                        if line.startswith(">")
                         else self.TEXT_SECONDARY
                     )
                     runtime.renderer.draw_text(
@@ -422,19 +567,28 @@ class UIDebugger:
             self.TEXT_PRIMARY,  # type: ignore
         )
 
-        self._render_tree_node(
-            root, panel_x + 8, panel_y + 32, 0, panel_w - 16, runtime
-        )
+        self._clamp_tree_scroll(panel_h)
 
-    def _render_tree_node(
-        self, node: Node, x: int, y: int, depth: int, max_width: int, runtime
-    ) -> int:
-        """Render a single tree node and return the next y position."""
-        if y > runtime.display.get_window_size()[1] - 50:
-            return y
+        start_y = panel_y + 32 - self._tree_scroll
+        for index, frame_node in enumerate(self._frame_nodes):
+            row_y = start_y + index * self._line_height
+            if row_y < panel_y + 26:
+                continue
+            if row_y > panel_y + panel_h - self._line_height:
+                break
+            self._render_tree_row(frame_node, panel_x + 8, row_y, panel_w - 16, runtime)
 
+    def _clamp_tree_scroll(self, panel_h: int) -> None:
+        content_height = len(self._frame_nodes) * self._line_height
+        max_scroll = max(0, content_height - max(0, panel_h - 40))
+        self._tree_scroll = max(0, min(self._tree_scroll, max_scroll))
+
+    def _render_tree_row(
+        self, frame_node: DebugFrameNode, x: int, y: int, max_width: int, runtime
+    ) -> None:
+        node = frame_node.node
         class_name = node.__class__.__name__
-        indent = depth * 12
+        indent = frame_node.depth * 12
 
         is_hovered = node == self.hovered_node
 
@@ -463,13 +617,6 @@ class UIDebugger:
             text_color,
         )
 
-        y += self._line_height
-
-        for child in node.children:
-            y = self._render_tree_node(child, x, y, depth + 1, max_width, runtime)
-
-        return y
-
     def _render_toolbar(self):
         """Render toolbar at top of screen."""
         runtime = get_runtime()
@@ -482,10 +629,18 @@ class UIDebugger:
         )
 
         items = [
-            ("[F3] Debug", self.enabled, self.ACCENT_GREEN),
-            ("[F4] Bounds", self.show_bounds, self.ACCENT_BLUE),
-            ("[F5] Padding", self.show_padding, self.ACCENT_PURPLE),
-            ("[F6] Tree", self.show_tree, self.ACCENT_ORANGE),
+            (f"[{self.toggle_hotkey_label}] Debug", self.enabled, self.ACCENT_GREEN),
+            (
+                f"[{self.bounds_hotkey_label}] Bounds",
+                self.show_bounds,
+                self.ACCENT_BLUE,
+            ),
+            (
+                f"[{self.padding_hotkey_label}] Padding",
+                self.show_padding,
+                self.ACCENT_PURPLE,
+            ),
+            (f"[{self.tree_hotkey_label}] Tree", self.show_tree, self.ACCENT_ORANGE),
         ]
 
         x = 10
@@ -495,12 +650,16 @@ class UIDebugger:
             x += len(text) * 7 + 20
 
         if self.hovered_node:
-            info = f"Hovering: {self.hovered_node.__class__.__name__}"
+            info = f"Hover: {self.hovered_node.__class__.__name__} | Nodes: {len(self._frame_nodes)}"
             if hasattr(self.hovered_node, "id") and self.hovered_node.id:
                 info += f" #{self.hovered_node.id}"
-            runtime.renderer.draw_text(
-                info,
-                (screen_w - len(info) * 7 - 10, 7),
-                self._font_size,
-                self.ACCENT_YELLOW,  # type: ignore
-            )
+        else:
+            info = f"Nodes: {len(self._frame_nodes)}"
+
+        info_width = self._measure_text_width(runtime, info, self._font_size)
+        runtime.renderer.draw_text(
+            info,
+            (screen_w - info_width - 10, 7),
+            self._font_size,
+            self.ACCENT_YELLOW if self.hovered_node else self.TEXT_SECONDARY,  # type: ignore
+        )

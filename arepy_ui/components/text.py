@@ -2,8 +2,31 @@ from typing import Optional
 
 from ..core.fonts import TextMetrics, draw_text, measure_text_ex
 from ..core.node import Node
-from ..core.style import Style
+from ..core.style import Style, merge_non_default_style_fields
 from ..core.types import Color, Unit
+
+
+_TEXT_STYLE_FIELDS = (
+    "margin",
+    "padding",
+    "position",
+    "top",
+    "left",
+    "right",
+    "bottom",
+    "visible",
+    "opacity",
+    "background_color",
+    "border_color",
+    "border_width",
+    "border_radius",
+    "cursor",
+    "text_color",
+    "font_size",
+)
+
+
+_TEXT_DEFAULT_STYLE = Style()
 
 
 class Text(Node):
@@ -18,12 +41,25 @@ class Text(Node):
         font_name: Optional[str] = None,
         **kwargs,
     ):
-        super().__init__(style=style or Style(), **kwargs)
+        if style is None:
+            merged_style = Style()
+        else:
+            merged_style = merge_non_default_style_fields(
+                Style(),
+                style,
+                _TEXT_STYLE_FIELDS,
+                default_style=_TEXT_DEFAULT_STYLE,
+            )
+        super().__init__(style=merged_style, **kwargs)
         self._text = text
         self.font_size = size
         self.color = color
         self.font_name = font_name  # None uses default font
         self._cached_metrics: Optional[TextMetrics] = None
+        self._lines: tuple[str, ...] = ()
+        self._is_multiline = False
+        self._line_height = 0.0
+        self._set_text_cache(text)
         self._update_size()
 
     @property
@@ -35,44 +71,57 @@ class Text(Node):
         if value != self._text:
             self._text = value
             self._cached_metrics = None
+            self._set_text_cache(value)
             self._update_size()
             self.mark_dirty()
 
+    def _set_text_cache(self, text: str):
+        if not text:
+            self._lines = ("",)
+            self._is_multiline = False
+            return
+
+        newline_index = text.find("\n")
+        if newline_index == -1:
+            self._lines = (text,)
+            self._is_multiline = False
+            return
+
+        self._lines = tuple(text.split("\n"))
+        self._is_multiline = True
+
     def _update_size(self):
         """Update node size based on text content using measure_text_ex."""
-        lines = self._text.split("\n")
-        if len(lines) > 1:
-            self._is_multiline = True
-            # Measure first line to get line_height
-            # We assume all lines have similar height characteristics
-            metrics = measure_text_ex(lines[0], self.font_size, self.font_name)
-            self._line_height = metrics.line_height
+        if self._is_multiline:
+            first_line_metrics = measure_text_ex(
+                self._lines[0], self.font_size, self.font_name
+            )
+            self._line_height = first_line_metrics.line_height
 
-            max_width = 0
-            for line in lines:
-                m = measure_text_ex(line, self.font_size, self.font_name)
-                max_width = max(max_width, m.width)
+            max_width = first_line_metrics.width
+            for line in self._lines[1:]:
+                max_width = max(
+                    max_width,
+                    measure_text_ex(line, self.font_size, self.font_name).width,
+                )
 
-            self.style.width = Unit.px(max_width)
-            self.style.height = Unit.px(len(lines) * self._line_height)
+            self.style.set_measured_size(
+                max_width,
+                len(self._lines) * self._line_height,
+            )
         else:
-            self._is_multiline = False
             if self._cached_metrics is None:
                 self._cached_metrics = measure_text_ex(
                     self._text, self.font_size, self.font_name
                 )
-            self.style.width = Unit.px(self._cached_metrics.width)
-            # Use font_size as height for better vertical centering
-            # measure_text_ex may return height with extra padding
-            self.style.height = Unit.px(self.font_size)
+            self.style.set_measured_size(
+                self._cached_metrics.width,
+                self.font_size,
+            )
 
     def render(self):
         if not self.style.visible or self.style.opacity <= 0:
             return
-
-        # Ensure size is updated
-        if not hasattr(self, "_is_multiline"):
-            self._update_size()
 
         final_color = self.color
         if self.style.opacity < 1.0:
@@ -84,9 +133,8 @@ class Text(Node):
             )
 
         if self._is_multiline:
-            lines = self._text.split("\n")
             y = self.computed_y
-            for line in lines:
+            for line in self._lines:
                 draw_text(
                     line,
                     self.computed_x,

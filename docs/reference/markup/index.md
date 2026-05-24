@@ -87,8 +87,9 @@ Create two files:
 
     def setup(game):
         ui_manager = UIManager.from_engine(game, config=UIConfig())
-        root = load_aui("menu.aui", context={"start": start})
-        ui_manager.set_root(root)
+        result = load_aui("menu.aui", handlers={"start": start})
+        if result.success and result.root is not None:
+            ui_manager.set_root(result.root)
         game.add_resource(ui_manager)
     ```
 
@@ -120,10 +121,11 @@ assets/
 ```python
 from arepy_ui.markup import (
     load_aui,           # Load AUI file
-    load_acss,          # Load ACSS file
+    load_aui_string,    # Load AUI from string
     load_globals,       # Load global styles
     set_theme,          # Switch theme
     get_theme,          # Get current theme
-    register_component, # Add custom element
 )
+
+from arepy_ui import register_component  # Add custom element
 ```

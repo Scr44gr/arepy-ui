@@ -9,7 +9,7 @@ arepy-ui is a modern UI library for building game interfaces with the [Arepy](ht
 - **Declarative Markup** - HTML-like `.aui` and CSS-like `.acss` files
 - **Theme Support** - CSS variables with light/dark variants
 - **Drag & Drop** - Built-in drag and drop system
-- **Animations** - Tweening system with easing functions
+- **Animations** - Sequenced animator and timers with easing functions
 - **High Performance** - Cython-accelerated parsing
 
 ## Project Links
@@ -25,3 +25,7 @@ arepy-ui is released under the [MIT License](license.md).
 ## Contributing
 
 We welcome contributions! See our [Contributing Guide](contributing.md) for details.
+
+## Improvement Plan
+
+See the [project roadmap](roadmap.md) for the current documentation alignment, performance, and architecture priorities.

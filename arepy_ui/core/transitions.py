@@ -1,12 +1,16 @@
+from __future__ import annotations
+
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, TypeAlias
 
 from arepy.engine.renderer import Rect
 
 from ..runtime import get_runtime
-from .animation import apply_easing
+from .animation import Animator, _copy_value, _write_property, apply_easing
 from .easing import Easing
+from .timers import Timer, Timers
 from .types import Color
 
 
@@ -24,7 +28,7 @@ class KeyFrame:
     """A single keyframe in an animation timeline."""
 
     time: float  # Time in seconds when this keyframe should be reached
-    value: float
+    value: Any
     easing: int = Easing.EASE_OUT_CUBIC
 
 
@@ -34,67 +38,86 @@ class PropertyAnimation:
 
     target: Any
     property_name: str
-    keyframes: List[KeyFrame]
+    keyframes: list[KeyFrame]
 
     _current_keyframe_index: int = field(default=0, init=False)
     _elapsed: float = field(default=0.0, init=False)
     _is_finished: bool = field(default=False, init=False)
+    _animator: Animator = field(default_factory=Animator, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.keyframes.sort(key=lambda keyframe: keyframe.time)
+        self.reset()
 
     def update(self, dt: float) -> bool:
         """Update animation. Returns True if still running."""
+        if dt < 0.0:
+            raise ValueError("PropertyAnimation delta time must be >= 0.")
+
         if self._is_finished:
             return False
 
         self._elapsed += dt
+        self._current_keyframe_index = self._resolve_current_keyframe_index(
+            self._elapsed
+        )
+        self._animator.update(dt)
 
-        # Find current keyframe segment
-        if self._current_keyframe_index >= len(self.keyframes) - 1:
+        if len(self._animator.animations) == 0:
             self._is_finished = True
+            if self.keyframes:
+                self._current_keyframe_index = len(self.keyframes) - 1
             return False
-
-        start_kf = self.keyframes[self._current_keyframe_index]
-        end_kf = self.keyframes[self._current_keyframe_index + 1]
-
-        # Progress through current segment
-        segment_duration = end_kf.time - start_kf.time
-        if segment_duration <= 0:
-            self._current_keyframe_index += 1
-            return True
-
-        segment_elapsed = self._elapsed - start_kf.time
-        t = min(segment_elapsed / segment_duration, 1.0)
-        eased_t = apply_easing(t, end_kf.easing)
-
-        # Interpolate value
-        current_value = start_kf.value + (end_kf.value - start_kf.value) * eased_t
-
-        # Set property
-        self._set_property(current_value)
-
-        # Check if we need to move to next keyframe
-        if t >= 1.0:
-            self._current_keyframe_index += 1
-            if self._current_keyframe_index >= len(self.keyframes) - 1:
-                self._is_finished = True
-                self._set_property(self.keyframes[-1].value)  # Ensure final value
 
         return True
 
-    def _set_property(self, value: float) -> None:
-        """Set the property value on the target."""
-        if "." in self.property_name:
-            obj = self.target
-            parts = self.property_name.split(".")
-            for part in parts[:-1]:
-                obj = getattr(obj, part)
-            setattr(obj, parts[-1], value)
-        else:
-            setattr(self.target, self.property_name, value)
+    def _resolve_current_keyframe_index(self, elapsed: float) -> int:
+        if not self.keyframes:
+            return 0
+
+        times = [keyframe.time for keyframe in self.keyframes]
+        index = bisect_right(times, elapsed) - 1
+        return max(0, min(index, len(self.keyframes) - 1))
 
     def reset(self) -> None:
         """Reset the animation to the beginning."""
+        self._animator.clear()
         self._current_keyframe_index = 0
         self._elapsed = 0.0
+
+        if not self.keyframes:
+            self._is_finished = True
+            return
+
+        first_keyframe = self.keyframes[0]
+        _write_property(
+            self.target,
+            self.property_name,
+            _copy_value(first_keyframe.value),
+        )
+
+        if len(self.keyframes) == 1:
+            self._is_finished = True
+            return
+
+        animation = self._animator.create()
+        previous_keyframe = first_keyframe
+
+        if previous_keyframe.time > 0.0:
+            animation.wait(previous_keyframe.time)
+
+        for keyframe in self.keyframes[1:]:
+            segment_duration = max(0.0, keyframe.time - previous_keyframe.time)
+            animation.to(
+                self.target,
+                self.property_name,
+                _copy_value(keyframe.value),
+                segment_duration,
+                keyframe.easing,
+            )
+            previous_keyframe = keyframe
+
+        animation.start()
         self._is_finished = False
 
 
@@ -119,21 +142,22 @@ class Timeline:
     auto_start: bool = True
     on_complete: Optional[Callable[[], None]] = None
 
-    _animations: List[PropertyAnimation] = field(default_factory=list)
-    _events: List[TimelineEvent] = field(default_factory=list)
+    _animations: list[PropertyAnimation] = field(default_factory=list)
+    _events: list[TimelineEvent] = field(default_factory=list)
     _elapsed: float = 0.0
     _is_running: bool = False
     _is_finished: bool = False
+    _timers: Timers = field(default_factory=Timers, init=False, repr=False)
 
     def __post_init__(self):
         if self.auto_start:
-            self._is_running = True
+            self.start()
 
     def add_animation(
         self,
         target: Any,
         property_name: str,
-        keyframes: List[Tuple[float, float, Optional[int]]],
+        keyframes: list[tuple[float, Any, int | None]],
     ) -> "Timeline":
         """
         Add an animation to the timeline.
@@ -147,7 +171,11 @@ class Timeline:
             Self for chaining
         """
         kfs = [
-            KeyFrame(time=t, value=v, easing=e or Easing.EASE_OUT_CUBIC)
+            KeyFrame(
+                time=t,
+                value=v,
+                easing=Easing.EASE_OUT_CUBIC if e is None else e,
+            )
             for t, v, e in keyframes
         ]
 
@@ -164,49 +192,63 @@ class Timeline:
 
     def add_event(self, time: float, callback: Callable[[], None]) -> "Timeline":
         """Add a callback event at a specific time."""
-        self._events.append(TimelineEvent(time=time, callback=callback))
+        event = TimelineEvent(time=time, callback=callback)
+        self._events.append(event)
+        if self._is_running and not self._is_finished:
+            self._schedule_event(event)
         return self
+
+    def _schedule_event(self, event: TimelineEvent) -> None:
+        delay = max(0.0, event.time - self._elapsed)
+        self._timers.after(delay, lambda event=event: self._fire_event(event))
 
     def start(self) -> None:
         """Start the timeline."""
         self._is_running = True
         self._is_finished = False
         self._elapsed = 0.0
+        self._timers.clear()
 
-        # Reset all animations
         for anim in self._animations:
             anim.reset()
 
-        # Reset events
         for event in self._events:
             event._triggered = False
+            self._schedule_event(event)
+
+    def _fire_event(self, event: TimelineEvent) -> None:
+        if event._triggered or not self._is_running or self._is_finished:
+            return
+        event._triggered = True
+        event.callback()
 
     def pause(self) -> None:
         """Pause the timeline."""
         self._is_running = False
+        for timer in self._timers.timers:
+            timer.pause()
 
     def resume(self) -> None:
         """Resume the timeline."""
         self._is_running = True
+        for timer in self._timers.timers:
+            timer.resume()
 
     def update(self, dt: float) -> bool:
         """Update the timeline. Returns True if still running."""
+        if dt < 0.0:
+            raise ValueError("Timeline delta time must be >= 0.")
+
         if not self._is_running or self._is_finished:
             return False
 
         self._elapsed += dt
 
-        # Update animations
         for anim in self._animations:
             anim.update(dt)
 
-        # Trigger events
-        for event in self._events:
-            if not event._triggered and self._elapsed >= event.time:
-                event._triggered = True
-                event.callback()
+        self._timers.update(dt)
 
-        # Check completion
         if self._elapsed >= self.duration:
             if self.loop:
                 self.start()
@@ -259,12 +301,26 @@ class CircleReveal:
         self.on_complete = on_complete
 
         self._elapsed = 0.0
-        self._is_running = True
+        self._is_running = False
+        self._is_finished = False
+        self._current_radius = self.start_radius
+        self.start()
+
+    def reset(self) -> None:
+        self._elapsed = 0.0
+        self._is_running = False
         self._is_finished = False
         self._current_radius = self.start_radius
 
+    def start(self) -> None:
+        self.reset()
+        self._is_running = True
+
     def update(self, dt: float) -> bool:
         """Update the reveal. Returns True if still running."""
+        if dt < 0.0:
+            raise ValueError("CircleReveal delta time must be >= 0.")
+
         if not self._is_running or self._is_finished:
             return False
 
@@ -357,11 +413,25 @@ class FadeTransition:
         self.on_complete = on_complete
 
         self._elapsed = 0.0
-        self._is_running = True
+        self._is_running = False
         self._is_finished = False
         self._alpha = 255 if fade_in else 0
+        self.start()
+
+    def reset(self) -> None:
+        self._elapsed = 0.0
+        self._is_running = False
+        self._is_finished = False
+        self._alpha = 255 if self.fade_in else 0
+
+    def start(self) -> None:
+        self.reset()
+        self._is_running = True
 
     def update(self, dt: float) -> bool:
+        if dt < 0.0:
+            raise ValueError("FadeTransition delta time must be >= 0.")
+
         if not self._is_running or self._is_finished:
             return False
 
@@ -405,85 +475,113 @@ class SequenceRunner:
     """
 
     def __init__(self, on_complete: Optional[Callable[[], None]] = None):
-        self._sequences: List[
-            Tuple[
-                Union[Timeline, CircleReveal, FadeTransition, Callable[[], None]], float
-            ]
-        ] = []
+        self._sequences: list[tuple[SequenceItem, float]] = []
         self._current_index = 0
-        self._delay_timer = 0.0
+        self._delay_timer: Timer | None = None
+        self._timers = Timers()
+        self._current_item_started = False
+        self._started_this_frame = False
         self._is_running = False
         self._is_finished = False
         self.on_complete = on_complete
 
     def add(
         self,
-        item: Union[Timeline, CircleReveal, FadeTransition, Callable[[], None]],
+        item: SequenceItem,
         delay: float = 0.0,
     ) -> "SequenceRunner":
         """Add an item to the sequence with optional delay before it."""
+        if delay < 0.0:
+            raise ValueError("SequenceRunner delay must be >= 0.")
         self._sequences.append((item, delay))
         return self
 
     def start(self) -> None:
         """Start running the sequence."""
         self._current_index = 0
-        self._delay_timer = 0.0
+        self._delay_timer = None
+        self._timers.clear()
+        self._current_item_started = False
+        self._started_this_frame = False
         self._is_running = True
         self._is_finished = False
+        if not self._sequences:
+            self._finish()
+            return
+        self._schedule_current_item()
 
-        # Start first item if no delay
-        if self._sequences and self._sequences[0][1] <= 0:
+    def _finish(self) -> None:
+        self._timers.clear()
+        self._delay_timer = None
+        self._current_item_started = False
+        self._started_this_frame = False
+        self._is_finished = True
+        self._is_running = False
+        if self.on_complete:
+            self.on_complete()
+
+    def _schedule_current_item(self) -> None:
+        if self._current_index >= len(self._sequences):
+            self._finish()
+            return
+
+        _, delay = self._sequences[self._current_index]
+        self._current_item_started = False
+
+        if delay <= 0.0:
             self._start_current_item()
+            return
+
+        self._delay_timer = self._timers.after(delay, self._start_current_item)
 
     def _start_current_item(self) -> None:
         """Start the current sequence item."""
+        self._delay_timer = None
         if self._current_index >= len(self._sequences):
             return
 
         item, _ = self._sequences[self._current_index]
+        self._current_item_started = True
+        self._started_this_frame = True
 
-        if callable(item) and not isinstance(
-            item, (Timeline, CircleReveal, FadeTransition)
-        ):
-            # It's a callback
+        if isinstance(item, (Timeline, CircleReveal, FadeTransition)):
+            item.start()
+            return
+
+        if callable(item):
             item()
             self._advance()
-        elif isinstance(item, Timeline):
-            item.start()
-        # CircleReveal and FadeTransition auto-start
 
     def _advance(self) -> None:
         """Move to next item in sequence."""
         self._current_index += 1
-        self._delay_timer = 0.0
 
         if self._current_index >= len(self._sequences):
-            self._is_finished = True
-            self._is_running = False
-            if self.on_complete:
-                self.on_complete()
+            self._finish()
+            return
+
+        self._schedule_current_item()
 
     def update(self, dt: float) -> bool:
         """Update the sequence. Returns True if still running."""
+        if dt < 0.0:
+            raise ValueError("SequenceRunner delta time must be >= 0.")
+
         if not self._is_running or self._is_finished:
             return False
 
+        self._started_this_frame = False
+        self._timers.update(dt)
+
         if self._current_index >= len(self._sequences):
-            self._is_finished = True
-            self._is_running = False
+            self._finish()
             return False
 
-        item, delay = self._sequences[self._current_index]
-
-        # Handle delay
-        if self._delay_timer < delay:
-            self._delay_timer += dt
-            if self._delay_timer >= delay:
-                self._start_current_item()
+        if not self._current_item_started or self._started_this_frame:
             return True
 
-        # Update current item
+        item, _ = self._sequences[self._current_index]
+
         if isinstance(item, (Timeline, CircleReveal, FadeTransition)):
             still_running = item.update(dt)
             if not still_running:
@@ -499,9 +597,9 @@ class SequenceRunner:
         if self._current_index >= len(self._sequences):
             return
 
-        item, delay = self._sequences[self._current_index]
+        item, _ = self._sequences[self._current_index]
 
-        if self._delay_timer < delay:
+        if not self._current_item_started:
             return
 
         if isinstance(item, (CircleReveal, FadeTransition)):
@@ -510,3 +608,6 @@ class SequenceRunner:
     @property
     def is_finished(self) -> bool:
         return self._is_finished
+
+
+SequenceItem: TypeAlias = Timeline | CircleReveal | FadeTransition | Callable[[], None]

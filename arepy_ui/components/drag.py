@@ -4,7 +4,7 @@ from typing import Any, Callable, Optional
 from arepy.engine.renderer import Rect
 from arepy.math import check_collision_point_rec
 
-from ..core.animation import Animation, Easing
+from ..core.animation import Easing
 from ..core.node import Node
 from ..core.style import Style
 from ..core.types import Color, CursorType, FlexDirection, Unit, Vector2
@@ -237,28 +237,21 @@ class Draggable(Node):
         start_x = self.computed_x
         start_y = self.computed_y
 
-        self._manager.animator.add(
-            Animation(
-                target=self,
-                property_name="computed_x",
-                start_value=start_x,
-                end_value=self._original_x,
-                duration=0.2,
-                easing=Easing.EASE_OUT_CUBIC,
-            )
-        )
+        self._manager.animator.create().to(
+            self,
+            "computed_x",
+            self._original_x,
+            0.2,
+            Easing.EASE_OUT_CUBIC,
+        ).start()
 
-        self._manager.animator.add(
-            Animation(
-                target=self,
-                property_name="computed_y",
-                start_value=start_y,
-                end_value=self._original_y,
-                duration=0.2,
-                easing=Easing.EASE_OUT_CUBIC,
-                on_complete=self.mark_dirty,
-            )
-        )
+        self._manager.animator.create().to(
+            self,
+            "computed_y",
+            self._original_y,
+            0.2,
+            Easing.EASE_OUT_CUBIC,
+        ).call(self.mark_dirty).start()
 
     def render(self):
         """Override render to avoid double rendering during drag."""

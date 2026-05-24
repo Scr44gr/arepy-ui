@@ -146,6 +146,14 @@ class TestAUIParser:
         assert root.children[0].tag == "image"
         assert root.children[0].attributes.get("src") == "test.png"
 
+    def test_parse_colorpicker_tag(self):
+        content = '<colorpicker color="#ff0000" show-alpha="true" />'
+        root, errors = parse_aui(content)
+
+        assert root is not None
+        assert root.tag == "colorpicker"
+        assert errors == []
+
     def test_parse_button_tag(self):
         content = '<button id="submit" class="primary">Click Me</button>'
         root, errors = parse_aui(content)
@@ -225,6 +233,24 @@ class TestAUIParser:
         parser.parse()
         # Parser should handle unclosed tags gracefully
         assert isinstance(parser.errors, list)
+
+    def test_parse_reports_unclosed_tag(self):
+        root, errors = parse_aui("<container>")
+
+        assert root is not None
+        assert any("Unclosed tag <container>" in error for error in errors)
+
+    def test_parse_reports_unterminated_quoted_attribute(self):
+        root, errors = parse_aui('<text value="broken></text>')
+
+        assert root is not None
+        assert any("Unterminated quoted attribute value" in error for error in errors)
+
+    def test_parse_reports_missing_gt(self):
+        root, errors = parse_aui("<container")
+
+        assert root is not None
+        assert any("Expected '>' after <container>" in error for error in errors)
 
 
 class TestParseAUIFunction:

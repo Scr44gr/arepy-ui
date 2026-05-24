@@ -5,7 +5,7 @@ This subpackage contains the parsing infrastructure:
 - aui_parser: HTML-like markup parser
 - css_parser: CSS-like stylesheet parser
 
-Cython implementations only - requires compiled .pyx files.
+Cython implementations only.
 Type hints provided via .pyi stub files.
 """
 
