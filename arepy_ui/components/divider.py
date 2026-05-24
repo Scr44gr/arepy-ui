@@ -109,7 +109,6 @@ class Divider(Node):
         if self.label:
             # Divider with label
             label_width = runtime.renderer.measure_text(self.label, self.font_size)
-            total_label_width = label_width + self.label_padding * 2
 
             # Calculate label position
             if self.label_position == "left":

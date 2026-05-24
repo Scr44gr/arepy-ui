@@ -1,6 +1,6 @@
 """Type stubs for css_parser Cython module."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 class StyleRule:
     """A CSS rule with selector and properties."""

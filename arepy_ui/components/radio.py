@@ -6,7 +6,7 @@ from arepy.engine.renderer import Rect
 from arepy.math import check_collision_point_rec
 
 from ..core.node import Node
-from ..core.style import Spacing, Style
+from ..core.style import Style
 from ..core.types import AlignItems, Color, FlexDirection, Unit
 from ..runtime import Key, get_runtime
 

@@ -11,7 +11,6 @@ from .types import (
     FlexDirection,
     JustifyContent,
     PositionType,
-    Rectangle,
     Unit,
     UnitType,
     Vector2,
@@ -500,10 +499,10 @@ class Node:
                     rect,
                     roundness,
                     10,
-                    color,  # type: ignore
+                    color,
                 )
             else:
-                runtime.renderer.draw_rectangle(rect, color)  # type: ignore
+                runtime.renderer.draw_rectangle(rect, color)
 
         # Draw Border
         if self.style.border_width > 0 and self.style.border_color:
@@ -521,13 +520,13 @@ class Node:
                     self.style.border_radius
                     / min(self.computed_width, self.computed_height),
                     10,
-                    self.style.border_color,  # type: ignore
+                    self.style.border_color,
                 )
             else:
                 runtime.renderer.draw_rectangle_lines_ex(
                     rect,
                     self.style.border_width,
-                    self.style.border_color,  # type: ignore
+                    self.style.border_color,
                 )
 
         # Render Children

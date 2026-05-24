@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple
 
 from ..core.node import Node
 from ..core.style import Spacing, Style
-from ..core.types import Color, FlexDirection, JustifyContent, Unit
+from ..core.types import Color, FlexDirection, Unit
 from .button import Button
 
 
@@ -41,8 +41,6 @@ class Tabs(Node):
 
         # Content Container
         # Use a ScrollView for the content to prevent overflow
-        from .scroll import ScrollView
-
         self.content_wrapper = Node(
             style=Style(
                 width=Unit.percent(100),
@@ -86,8 +84,6 @@ class Tabs(Node):
                 self.tab_bar.add_child(btn)
 
                 # Add content directly - don't wrap if already ScrollView
-                from .scroll import ScrollView
-
                 content.style.visible = False
                 self.content_container.add_child(content)
 

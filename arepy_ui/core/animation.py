@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 if TYPE_CHECKING:
     from arepy_ui import Node, Style
 
-from .easing import Easing, apply_easing
+from .easing import Easing as Easing, apply_easing
 from .types import Unit
 
 

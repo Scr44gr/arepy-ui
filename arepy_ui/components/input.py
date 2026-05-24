@@ -413,7 +413,6 @@ class TextInput(Node):
 
     def _ensure_cursor_visible(self):
         """Scroll to keep cursor visible."""
-        runtime = get_runtime()
         _, _, content_w, _ = self._get_content_area()
 
         cursor_x = measure_text(self.value[: self.cursor_pos], int(self.font_size))

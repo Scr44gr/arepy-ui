@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 from arepy_ui.markup.builder import build_component
 from arepy_ui.markup.errors import ErrorCollector, ErrorLevel, MarkupError, ParseResult
@@ -17,9 +17,6 @@ from arepy_ui.markup.parsers import (
     parse_aui_file,
 )
 from arepy_ui.registry import get_registry
-
-if TYPE_CHECKING:
-    from arepy_ui.core.node import Node
 
 
 def _get_components() -> Dict[str, type]:

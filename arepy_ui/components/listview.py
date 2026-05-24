@@ -1,7 +1,7 @@
 """List component - Selectable list with virtualization."""
 
 from dataclasses import dataclass
-from typing import Any, Callable, Generic
+from typing import Callable, Generic
 from typing import List as PyList
 from typing import Optional, TypeVar
 
@@ -10,9 +10,9 @@ from arepy.engine.renderer import Rect
 from arepy.math import check_collision_point_rec
 
 from ..core.node import Node
-from ..core.style import Spacing, Style
+from ..core.style import Style
 from ..core.types import Color, Unit
-from ..runtime import Key, MouseButton, get_runtime
+from ..runtime import Key, get_runtime
 
 T = TypeVar("T")
 

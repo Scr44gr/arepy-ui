@@ -1,7 +1,7 @@
 """Type stubs for types Cython module."""
 
 from enum import Enum
-from typing import Iterator, Tuple, Union
+from typing import Iterator
 
 from arepy import CursorType as CursorType
 from arepy.engine.renderer import Color as BaseColor

@@ -4,7 +4,7 @@ Component builder for converting AUI nodes to arepy-ui components.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, Optional
 
 from arepy_ui.core.style import Style
 from arepy_ui.markup.converters import (
@@ -227,8 +227,8 @@ def _convert_style_value(style_key: str, value: Any) -> Any:
 def build_component(
     node: AUINode,
     stylesheet: Optional[StyleSheet],
-    handlers: Dict[str, Callable[..., Any]],
-    components: Dict[str, type],
+    handlers: Mapping[str, Callable[..., Any]],
+    components: Mapping[str, type[Any]],
     errors: Optional[ErrorCollector] = None,
 ) -> Optional[Node]:
     """
@@ -360,7 +360,7 @@ def build_component(
 def _apply_tag_attributes(
     tag: str,
     node: AUINode,
-    handlers: Dict[str, Callable[..., Any]],
+    handlers: Mapping[str, Callable[..., Any]],
     kwargs: Dict[str, Any],
     stylesheet: Optional[StyleSheet] = None,
 ) -> None:

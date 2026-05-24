@@ -121,15 +121,15 @@ class UIDebugger:
         if self.show_padding and node.style.padding:
             self._render_padding(node, runtime)
 
-        runtime.renderer.draw_rectangle_lines_ex(Rect(x, y, w, h), 1, border_color)  # type: ignore
+        runtime.renderer.draw_rectangle_lines_ex(Rect(x, y, w, h), 1, border_color)
 
         if node == self.hovered_node:
             highlight = Color(255, 255, 100, 50)
-            runtime.renderer.draw_rectangle(Rect(x, y, w, h), highlight)  # type: ignore
+            runtime.renderer.draw_rectangle(Rect(x, y, w, h), highlight)
             runtime.renderer.draw_rectangle_lines_ex(
                 Rect(x, y, w, h),
                 2,
-                self.ACCENT_YELLOW,  # type: ignore
+                self.ACCENT_YELLOW,
             )
 
         for child in node.children:
@@ -301,13 +301,13 @@ class UIDebugger:
         t = self._format_unit(spacing.top) if spacing.top else "0"
         r = self._format_unit(spacing.right) if spacing.right else "0"
         b = self._format_unit(spacing.bottom) if spacing.bottom else "0"
-        l = self._format_unit(spacing.left) if spacing.left else "0"
+        left = self._format_unit(spacing.left) if spacing.left else "0"
 
-        if t == r == b == l:
+        if t == r == b == left:
             return t
-        if t == b and l == r:
-            return f"{t} {l}"
-        return f"{t} {r} {b} {l}"
+        if t == b and left == r:
+            return f"{t} {left}"
+        return f"{t} {r} {b} {left}"
 
     def _render_info_panel(
         self, sections: list, mouse_x: float, mouse_y: float, runtime
@@ -403,23 +403,23 @@ class UIDebugger:
 
         runtime.renderer.draw_rectangle(
             Rect(panel_x, panel_y, panel_w, panel_h),
-            self.PANEL_BG,  # type: ignore
+            self.PANEL_BG,
         )
         runtime.renderer.draw_rectangle_lines_ex(
             Rect(panel_x, panel_y, panel_w, panel_h),
             1,
-            self.PANEL_BORDER,  # type: ignore
+            self.PANEL_BORDER,
         )
 
         runtime.renderer.draw_rectangle(
             Rect(panel_x, panel_y, panel_w, 24),
-            self.HEADER_BG,  # type: ignore
+            self.HEADER_BG,
         )
         runtime.renderer.draw_text(
             "Component Tree",
             (panel_x + 8, panel_y + 5),
             self._font_size,
-            self.TEXT_PRIMARY,  # type: ignore
+            self.TEXT_PRIMARY,
         )
 
         self._render_tree_node(
@@ -478,7 +478,7 @@ class UIDebugger:
         bar_h = 28
         runtime.renderer.draw_rectangle(
             Rect(0, 0, screen_w, bar_h),
-            Color(30, 30, 35, 230),  # type: ignore
+            Color(30, 30, 35, 230),
         )
 
         items = [
@@ -491,7 +491,7 @@ class UIDebugger:
         x = 10
         for text, active, color in items:
             text_color = color if active else self.TEXT_DIM
-            runtime.renderer.draw_text(text, (x, 7), self._font_size, text_color)  # type: ignore
+            runtime.renderer.draw_text(text, (x, 7), self._font_size, text_color)
             x += len(text) * 7 + 20
 
         if self.hovered_node:
@@ -502,5 +502,5 @@ class UIDebugger:
                 info,
                 (screen_w - len(info) * 7 - 10, 7),
                 self._font_size,
-                self.ACCENT_YELLOW,  # type: ignore
+                self.ACCENT_YELLOW,
             )

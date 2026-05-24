@@ -107,14 +107,12 @@ class ProgressBar(Node):
 
         # Calculate label dimensions
         label_width = 0
-        label_height = 0
         if self.show_label:
             label_text = f"{int(self.percentage)}%"
             label_width = (
                 runtime.renderer.measure_text(label_text, self.font_size)
                 + self.label_gap
             )
-            label_height = self.font_size
 
         # Bar dimensions
         bar_width = self.computed_width

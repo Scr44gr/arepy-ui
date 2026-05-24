@@ -5,7 +5,7 @@ This is called automatically by setuptools during pip install.
 
 import os
 
-from setuptools import Extension, setup  # type: ignore
+from setuptools import Extension, setup
 
 # Check if Cython is available
 try:

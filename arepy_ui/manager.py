@@ -1,4 +1,3 @@
-import os
 from typing import TYPE_CHECKING, Callable, List, Optional
 
 from .config import ResizeMode, ScaleTransform, UIConfig, calculate_scale_transform
@@ -171,12 +170,6 @@ class UIManager:
 
     def _apply_font_scale_to_node(self, node: Node) -> None:
         """Recursively apply the current font scale to nodes with a `font_size` attribute."""
-        # Import locally to avoid circular imports with component modules
-        try:
-            from ..components.text import Text  # type: ignore
-        except Exception:
-            Text = None  # type: ignore
-
         # If a node has a font_size attribute, scale it relative to its stored base size.
         if hasattr(node, "font_size"):
             base_attr = "_aui_base_font_size"
@@ -199,14 +192,15 @@ class UIManager:
             # Invalidate cached metrics if present
             if hasattr(node, "_cached_metrics"):
                 try:
-                    node._cached_metrics = None
+                    setattr(node, "_cached_metrics", None)
                 except Exception:
                     pass
 
             # Allow node to update internal sizing if it has that hook
-            if hasattr(node, "_update_size"):
+            update_size = getattr(node, "_update_size", None)
+            if callable(update_size):
                 try:
-                    node._update_size()
+                    update_size()
                 except Exception:
                     pass
 
@@ -488,7 +482,7 @@ class UIManager:
         if cursor_to_set != self._current_cursor:
             self._current_cursor = cursor_to_set
             runtime = get_runtime()
-            runtime.display.set_mouse_cursor(cursor_to_set.value)
+            runtime.display.set_mouse_cursor(cursor_to_set)
 
     def _find_node_with_cursor(
         self, node: Optional[Node], mx: float, my: float
@@ -637,14 +631,14 @@ class UIManager:
 
         # Draw background
         bg_rect = Rect(x, y, int(width), int(height))
-        runtime.renderer.draw_rectangle_rounded(bg_rect, 0.3, 8, Color(30, 30, 30, 240))  # type: ignore
+        runtime.renderer.draw_rectangle_rounded(bg_rect, 0.3, 8, Color(30, 30, 30, 240))
 
         # Draw text
         runtime.renderer.draw_text(
             self._tooltip_text,
             (int(x + padding), int(y + padding)),
             font_size,
-            Color(255, 255, 255, 255),  # type: ignore
+            Color(255, 255, 255, 255),
         )
 
     def _render_modals(self):
@@ -659,7 +653,7 @@ class UIManager:
                 backdrop_rect = Rect(0, 0, self.screen_width, self.screen_height)
                 runtime.renderer.draw_rectangle(
                     backdrop_rect,
-                    self._modal_backdrop_color,  # type: ignore
+                    self._modal_backdrop_color,
                 )
 
             # Render modal

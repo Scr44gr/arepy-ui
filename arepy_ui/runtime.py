@@ -3,7 +3,7 @@ Runtime context for arepy-ui.
 Holds references to arepy's Renderer2D, Input, Display, and AssetStore.
 """
 
-from typing import Any, Optional
+from typing import Optional
 
 from arepy.asset_store.asset_store import AssetStore
 from arepy.engine.audio import AudioDevice

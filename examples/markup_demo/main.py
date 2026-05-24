@@ -1,6 +1,6 @@
 import os
 
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from arepy import ArepyEngine
 from arepy import Color as ArepyColor
@@ -42,7 +42,7 @@ def create_ui():
             app_state["counter_text"].text = f"Clicked: {app_state['count']} times"  # type: ignore
 
     # Event handlers mapping
-    handlers = {
+    handlers: Dict[str, Callable[..., Any]] = {
         "increment": increment,
         "decrement": decrement,
         "reset": reset,
@@ -63,20 +63,6 @@ def create_ui():
         app_state["counter_text"] = root.find_by_id("counter-text")
 
     return root
-
-
-def _find_by_id(node, element_id: str):
-    """Recursively find a node by its ID attribute."""
-    if hasattr(node, "id") and node.id == element_id:
-        return node
-
-    if hasattr(node, "children"):
-        for child in node.children:
-            result = _find_by_id(child, element_id)
-            if result:
-                return result
-
-    return None
 
 
 def update_ui(

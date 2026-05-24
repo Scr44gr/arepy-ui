@@ -4,6 +4,7 @@ Requires optional dependencies: pip install arepy-ui[full]
 
 import os
 import struct
+import importlib
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Optional, Union
 
@@ -26,12 +27,17 @@ from .text import Text
 
 # Check if video dependencies are available
 try:
-    import av
-
+    av: Optional[Any] = importlib.import_module("av")
     HAS_VIDEO_DEPS = True
 except ImportError:
     HAS_VIDEO_DEPS = False
-    av = None  # type: ignore
+    av = None
+
+
+def _get_av() -> Any:
+    if av is None:
+        raise RuntimeError("Video dependencies are not available. Install arepy-ui[full].")
+    return av
 
 
 class VideoState:
@@ -581,7 +587,8 @@ class Video(Node):
     def _extract_audio_from_video(self) -> Optional[bytes]:
         """Extract audio from video file as WAV bytes."""
         try:
-            container = av.open(self.source)
+            av_module = _get_av()
+            container = av_module.open(self.source)
 
             if len(container.streams.audio) == 0:
                 container.close()
@@ -592,7 +599,7 @@ class Video(Node):
             sample_rate = audio_stream.rate
             channels = audio_stream.channels
 
-            resampler = av.AudioResampler(
+            resampler = av_module.AudioResampler(
                 format="s16",
                 layout="stereo" if channels >= 2 else "mono",
                 rate=sample_rate,
@@ -678,7 +685,8 @@ class Video(Node):
         runtime = get_runtime()
 
         try:
-            self._video_container = av.open(self.source)
+            av_module = _get_av()
+            self._video_container = av_module.open(self.source)
             self._video_stream = self._video_container.streams.video[0]
 
             self._video_width = self._video_stream.width
@@ -753,7 +761,7 @@ class Video(Node):
                     frame = next(self._frame_generator)
                     rgba_frame = frame.to_ndarray(format="rgba")
                     return rgba_frame.tobytes()
-                except:
+                except Exception:
                     return None
             else:
                 self._state = VideoState.STOPPED
@@ -933,13 +941,13 @@ class Video(Node):
             try:
                 self._audio_device.stop_music(self._audio_music)
                 self._audio_device.unload_music(self._audio_music)
-            except:
+            except Exception:
                 pass
 
         if self._video_container:
             try:
                 self._video_container.close()
-            except:
+            except Exception:
                 pass
             self._video_container = None
 
