@@ -183,7 +183,7 @@ class Draggable(Node):
 
         # Change cursor
         runtime = get_runtime()
-        runtime.display.set_mouse_cursor(self.drag_cursor.value)
+        runtime.display.set_mouse_cursor(self.drag_cursor)
 
         if self.on_drag_start:
             self.on_drag_start()
@@ -233,9 +233,6 @@ class Draggable(Node):
             dy = self._original_y - self.computed_y
             self.translate(dx, dy)
             return
-
-        start_x = self.computed_x
-        start_y = self.computed_y
 
         self._manager.animator.create().to(
             self,
@@ -527,7 +524,7 @@ class DropZone(Node):
                 indicator_rect = Rect(int(x), int(y), int(w), int(h))
                 runtime.renderer.draw_rectangle(
                     indicator_rect,
-                    self.drop_indicator_color,  # type: ignore
+                    self.drop_indicator_color,
                 )
 
     def _receive_drop(self, draggable: Draggable, data: Any) -> bool:

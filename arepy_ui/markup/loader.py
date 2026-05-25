@@ -8,7 +8,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 import os
 import re
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional, TypeVar
 
 from arepy_ui.markup.builder import build_component
 from arepy_ui.markup.errors import ErrorCollector, ErrorLevel, MarkupError, ParseResult
@@ -21,7 +21,6 @@ from arepy_ui.markup.parsers import (
 from arepy_ui.registry import get_registry
 
 if TYPE_CHECKING:
-    from arepy_ui.core.node import Node
     from arepy_ui.markup.parsers import AUINode, StyleSheet
 
 
@@ -57,7 +56,14 @@ _AUI_STRING_CACHE: OrderedDict[str, _AUIStringCacheEntry] = OrderedDict()
 _INLINE_STYLESHEET_CACHE: OrderedDict[str, StyleSheet] = OrderedDict()
 
 
-def _cache_get[K, V](cache: OrderedDict[K, V], key: K) -> Optional[V]:
+_CacheKey = TypeVar("_CacheKey")
+_CacheValue = TypeVar("_CacheValue")
+
+
+def _cache_get(
+    cache: OrderedDict[_CacheKey, _CacheValue],
+    key: _CacheKey,
+) -> Optional[_CacheValue]:
     value = cache.get(key)
     if value is None:
         return None
@@ -65,8 +71,11 @@ def _cache_get[K, V](cache: OrderedDict[K, V], key: K) -> Optional[V]:
     return value
 
 
-def _cache_put[K, V](
-    cache: OrderedDict[K, V], key: K, value: V, max_entries: int
+def _cache_put(
+    cache: OrderedDict[_CacheKey, _CacheValue],
+    key: _CacheKey,
+    value: _CacheValue,
+    max_entries: int,
 ) -> None:
     cache[key] = value
     cache.move_to_end(key)
@@ -170,7 +179,7 @@ def _load_cached_inline_stylesheet(content: str) -> StyleSheet:
     return stylesheet
 
 
-def _get_components() -> Dict[str, type]:
+def _get_components() -> Mapping[str, type[Any]]:
     """Get all registered components from the registry."""
     return get_registry().get_components_dict()
 
@@ -200,7 +209,7 @@ def _convert_parser_errors(parser_errors: list) -> list[MarkupError]:
 def load_aui(
     path: str,
     stylesheet: Optional[str] = None,
-    handlers: Optional[Dict[str, Callable[..., Any]]] = None,
+    handlers: Optional[Mapping[str, Callable[..., Any]]] = None,
 ) -> ParseResult:
     """
     Load an AUI file and return a ParseResult with the root component and any errors.
@@ -250,7 +259,7 @@ def load_aui(
 def load_aui_string(
     content: str,
     stylesheet: Optional[Any] = None,
-    handlers: Optional[Dict[str, Callable[..., Any]]] = None,
+    handlers: Optional[Mapping[str, Callable[..., Any]]] = None,
 ) -> ParseResult:
     """
     Load AUI from a string and return a ParseResult.

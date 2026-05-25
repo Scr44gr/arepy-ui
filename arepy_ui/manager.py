@@ -1,10 +1,8 @@
-import os
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Protocol, TypeAlias, cast
 
 from arepy import TextureFilter
 from arepy.asset_store.asset_store import AssetStore
 from arepy.ecs.systems import SystemPipeline
-from arepy.ecs.world import World
 from arepy.engine.audio import AudioDevice
 from arepy.engine.display import Display
 from arepy.engine.input import Input, Key
@@ -26,6 +24,13 @@ if TYPE_CHECKING:
 
 # Global list for overlay renders (dropdowns, tooltips, etc)
 _overlay_renders: List[Callable[[], None]] = []
+
+
+class TimeLike(Protocol):
+    delta_seconds: float
+
+
+RootNodeInput: TypeAlias = Node | Callable[[], Node]
 
 
 def register_overlay(render_fn: Callable[[], None]):
@@ -145,7 +150,9 @@ class UIManager:
         return cls(config=config)
 
     @classmethod
-    def from_world(cls, world: World, config: Optional[UIConfig] = None) -> "UIManager":
+    def from_world(
+        cls, world: Any, config: Optional[UIConfig] = None
+    ) -> "UIManager":
         """Create a UIManager from an arepy World and configure runtime services."""
         try:
             renderer = world.get_resource(Renderer2D)
@@ -178,8 +185,8 @@ class UIManager:
     @classmethod
     def install(
         cls,
-        world: World,
-        root: Optional[Node] = None,
+        world: Any,
+        root: Optional[RootNodeInput] = None,
         config: Optional[UIConfig] = None,
     ) -> "UIManager":
         """Create, register, and hook a UIManager into a world's UI pipelines."""
@@ -187,7 +194,8 @@ class UIManager:
         world.add_resource(manager)
 
         if root is not None:
-            manager.set_root(root)
+            resolved_root = root if isinstance(root, Node) else root()
+            manager.set_root(resolved_root)
 
         world.add_system(SystemPipeline.UPDATE, _world_update_system)
         world.add_system(SystemPipeline.RENDER_UI, _world_render_system)
@@ -250,42 +258,49 @@ class UIManager:
 
     def _apply_font_scale_to_node(self, node: Node) -> None:
         """Recursively apply the current font scale to nodes with a `font_size` attribute."""
-        # Import locally to avoid circular imports with component modules
-        try:
-            from ..components.text import Text  # type: ignore
-        except Exception:
-            Text = None  # type: ignore
-
         # If a node has a font_size attribute, scale it relative to its stored base size.
-        if hasattr(node, "font_size"):
-            base_attr = "_aui_base_font_size"
+        dynamic_node = cast(Any, node)
+        try:
+            font_size = dynamic_node.font_size
+        except AttributeError:
+            font_size = None
+
+        if font_size is not None:
             # Store base size if not present
-            if not hasattr(node, base_attr):
+            try:
+                base_val = dynamic_node._aui_base_font_size
+            except AttributeError:
                 try:
-                    setattr(node, base_attr, float(getattr(node, "font_size")))
+                    base_val = float(font_size)
                 except Exception:
                     # Fallback to raw value if conversion fails
-                    setattr(node, base_attr, getattr(node, "font_size"))
+                    base_val = font_size
+                try:
+                    dynamic_node._aui_base_font_size = base_val
+                except Exception:
+                    pass
 
             # Apply scale
             try:
-                base_val = getattr(node, base_attr)
-                setattr(node, "font_size", base_val * self._font_scale)
+                dynamic_node.font_size = base_val * self._font_scale
             except Exception:
                 # Ignore errors setting font size for safety
                 pass
 
             # Invalidate cached metrics if present
-            if hasattr(node, "_cached_metrics"):
-                try:
-                    node._cached_metrics = None
-                except Exception:
-                    pass
+            try:
+                dynamic_node._cached_metrics = None
+            except Exception:
+                pass
 
             # Allow node to update internal sizing if it has that hook
-            if hasattr(node, "_update_size"):
+            try:
+                update_size = dynamic_node._update_size
+            except AttributeError:
+                update_size = None
+            if callable(update_size):
                 try:
-                    node._update_size()
+                    update_size()
                 except Exception:
                     pass
 
@@ -332,7 +347,12 @@ class UIManager:
         self._sync_debugger_hotkey_labels()
 
     def _format_debug_key_label(self, key: Optional[Key]) -> str:
-        return getattr(key, "name", "OFF") if key is not None else "OFF"
+        if key is None:
+            return "OFF"
+        try:
+            return key.name
+        except AttributeError:
+            return "OFF"
 
     def _sync_debugger_hotkey_labels(self) -> None:
         self.debugger.set_hotkey_labels(
@@ -371,7 +391,7 @@ class UIManager:
             # Calculate layout immediately to avoid 1-frame glitch
             self._recalculate_layout()
 
-    def update_system(self, time: Time, input: Input) -> None:
+    def update_system(self, time: TimeLike, input: Input) -> None:
         """World system adapter that updates the UI manager from injected resources."""
         self.update(time.delta_seconds, wheel_scroll=input.get_mouse_wheel_delta())
 
@@ -504,7 +524,11 @@ class UIManager:
 
             # Check if clicked outside modal (on backdrop) to close it
             if is_click and not is_inside_modal:
-                close_on_backdrop = getattr(topmost_modal, "_close_on_backdrop", True)
+                dynamic_modal = cast(Any, topmost_modal)
+                try:
+                    close_on_backdrop = dynamic_modal._close_on_backdrop
+                except AttributeError:
+                    close_on_backdrop = True
                 if close_on_backdrop:
                     self.close_modal(topmost_modal)
 
@@ -707,7 +731,7 @@ class UIManager:
         if cursor_to_set != self._current_cursor:
             self._current_cursor = cursor_to_set
             runtime = get_runtime()
-            runtime.display.set_mouse_cursor(cursor_to_set.value)
+            runtime.display.set_mouse_cursor(cursor_to_set)
 
     def _find_node_with_cursor(
         self, node: Optional[Node], mx: float, my: float
@@ -820,7 +844,11 @@ class UIManager:
         """Update tooltip state based on hovered node."""
         tooltip = None
         if self._hovered_node:
-            tooltip = getattr(self._hovered_node, "tooltip", None)
+            hovered_node = cast(Any, self._hovered_node)
+            try:
+                tooltip = hovered_node.tooltip
+            except AttributeError:
+                tooltip = None
 
         if tooltip:
             self._tooltip_pos = mouse_pos
@@ -867,14 +895,14 @@ class UIManager:
 
         # Draw background
         bg_rect = Rect(x, y, int(width), int(height))
-        runtime.renderer.draw_rectangle_rounded(bg_rect, 0.3, 8, Color(30, 30, 30, 240))  # type: ignore
+        runtime.renderer.draw_rectangle_rounded(bg_rect, 0.3, 8, Color(30, 30, 30, 240))
 
         # Draw text
         runtime.renderer.draw_text(
             self._tooltip_text,
             (int(x + padding), int(y + padding)),
             font_size,
-            Color(255, 255, 255, 255),  # type: ignore
+            Color(255, 255, 255, 255),
         )
 
     def _render_modals(self):
@@ -885,11 +913,16 @@ class UIManager:
 
         for modal in self._modals:
             # Draw backdrop
-            if getattr(modal, "_has_backdrop", True):
+            dynamic_modal = cast(Any, modal)
+            try:
+                has_backdrop = dynamic_modal._has_backdrop
+            except AttributeError:
+                has_backdrop = True
+            if has_backdrop:
                 backdrop_rect = Rect(0, 0, self.screen_width, self.screen_height)
                 runtime.renderer.draw_rectangle(
                     backdrop_rect,
-                    self._modal_backdrop_color,  # type: ignore
+                    self._modal_backdrop_color,
                 )
 
             # Render modal

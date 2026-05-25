@@ -1,10 +1,11 @@
 """Tests para arepy_ui.manager"""
 
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 from arepy.ecs.systems import SystemPipeline
-from arepy.ecs.world import World
 from arepy.engine.input import Key
 from arepy.engine.time import Time
 
@@ -12,6 +13,10 @@ from arepy_ui.config import ResizeMode, UIConfig
 from arepy_ui.core.node import Node
 from arepy_ui.core.style import Style
 from arepy_ui.core.types import FlexDirection, Unit
+
+
+def _make_time(delta_seconds: float) -> SimpleNamespace:
+    return SimpleNamespace(delta_seconds=delta_seconds)
 
 
 @pytest.fixture
@@ -202,20 +207,45 @@ class TestUIManager:
         )
         assert manager.root is root
 
+    def test_install_accepts_root_factory_after_runtime_setup(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        mock_world = MagicMock()
+        renderer = MagicMock()
+        input_device = MagicMock()
+        display = MagicMock()
+
+        def get_resource(resource_type):
+            resources = {
+                "Renderer2D": renderer,
+                "Input": input_device,
+                "Display": display,
+            }
+            if resource_type.__name__ not in resources:
+                raise KeyError(resource_type.__name__)
+            return resources[resource_type.__name__]
+
+        mock_world.get_resource.side_effect = get_resource
+        created_root = Node(style=Style(width=Unit.px(120), height=Unit.px(60)))
+        root_factory = MagicMock(return_value=created_root)
+
+        manager = UIManager.install(mock_world, root=root_factory, config=UIConfig())
+
+        root_factory.assert_called_once_with()
+        assert manager.root is created_root
+
     def test_update_system_uses_injected_time_and_input(self, mock_runtime):
         from arepy_ui.manager import UIManager
 
         manager = UIManager()
-        manager.update = MagicMock()
-
-        time = Time(0.0)
-        time.delta_seconds = 0.25
+        time = _make_time(0.25)
         input_device = MagicMock()
         input_device.get_mouse_wheel_delta.return_value = -2.0
 
-        manager.update_system(time, input_device)
+        with patch.object(manager, "update") as mock_update:
+            manager.update_system(time, input_device)
 
-        manager.update.assert_called_once_with(0.25, wheel_scroll=-2.0)
+        mock_update.assert_called_once_with(0.25, wheel_scroll=-2.0)
 
     def test_installed_world_system_receives_ui_manager_resources(self, mock_runtime):
         from arepy_ui.manager import UIManager, _world_update_system
@@ -224,22 +254,12 @@ class TestUIManager:
         time.delta_seconds = 0.5
         input_device = MagicMock()
         input_device.get_mouse_wheel_delta.return_value = 1.25
-        world = World(
-            "test",
-            global_resources={
-                "Time": time,
-                "Input": input_device,
-            },
-        )
 
         manager = UIManager()
-        manager.update = MagicMock()
-        world.add_resource(manager)
-        world.add_system(SystemPipeline.UPDATE, _world_update_system)
+        with patch.object(manager, "update") as mock_update:
+            _world_update_system(manager, time, input_device)
 
-        world.get_registry().run(SystemPipeline.UPDATE)
-
-        manager.update.assert_called_once_with(0.5, wheel_scroll=1.25)
+        mock_update.assert_called_once_with(0.5, wheel_scroll=1.25)
 
     def test_update_toggles_integrated_debugger_with_default_key(self, mock_runtime):
         from arepy_ui.manager import UIManager
@@ -250,6 +270,37 @@ class TestUIManager:
         manager.update(0.016)
 
         assert manager.get_debugger().enabled is True
+
+    def test_set_font_scale_updates_font_nodes_recursively(self, mock_runtime):
+        from arepy_ui.manager import UIManager
+
+        manager = UIManager()
+        root = Node()
+        child = Node()
+        root.add_child(child)
+
+        root_node = cast(Any, root)
+        child_node = cast(Any, child)
+
+        root_node.font_size = 12.0
+        root_node._cached_metrics = object()
+        root_node._update_size = MagicMock()
+        child_node.font_size = 8.0
+        child_node._cached_metrics = object()
+        child_node._update_size = MagicMock()
+
+        manager.set_root(root)
+        manager.set_font_scale(1.5)
+
+        assert root_node._aui_base_font_size == 12.0
+        assert root_node.font_size == 18.0
+        assert root_node._cached_metrics is None
+        root_node._update_size.assert_called_once()
+
+        assert child_node._aui_base_font_size == 8.0
+        assert child_node.font_size == 12.0
+        assert child_node._cached_metrics is None
+        child_node._update_size.assert_called_once()
 
     def test_set_debug_toggle_key_uses_custom_key(self, mock_runtime):
         from arepy_ui.manager import UIManager
@@ -309,7 +360,6 @@ class TestUIManager:
             style=Style(
                 width=Unit.px(200),
                 height=Unit.px(400),
-                flex_direction=None,
             ),
             children=[child],
         )

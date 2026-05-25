@@ -161,7 +161,7 @@ class FontManager:
 
         try:
             temp_texture = ArepyTexture(-1, size=(base_size, base_size))
-            temp_texture._ref_texture = font._ref_font.texture  # type: ignore
+            temp_texture._ref_texture = font._ref_font.texture
             runtime.renderer.set_texture_filter(temp_texture, texture_filter)
         except Exception as e:
             logger.error(
@@ -442,7 +442,11 @@ class FontManager:
                     font_size / font_info.base_size if font_info.base_size > 0 else 1.0
                 )
                 # Line height = font height + some padding for readability
-                line_height = size_y + (getattr(font, "glyphPadding", 0) * scale * 2)
+                try:
+                    glyph_padding = font.glyphPadding
+                except AttributeError:
+                    glyph_padding = 0
+                line_height = size_y + (glyph_padding * scale * 2)
 
                 return self._cache_measurement(
                     cache_key,

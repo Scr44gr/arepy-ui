@@ -25,7 +25,7 @@ class MarkupError:
     attribute: Optional[str] = None
 
     def __str__(self) -> str:
-        parts = [f"[{self.level.value.upper()}]"]
+        parts: List[str] = [f"[{self.level.value.upper()}]"]
 
         if self.line is not None:
             loc = f"line {self.line}"

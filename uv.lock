@@ -1,18 +1,18 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11"
 
 [[package]]
 name = "arepy"
-version = "0.5.4"
+version = "0.5.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bitarray" },
     { name = "raylib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/80/16/d0b6060e068c59f4077c0b8165c2bd0367c7a776d8061f5b5d5bb5d7c717/arepy-0.5.4.tar.gz", hash = "sha256:62c2db2f8b1c366e2a42d8094a4d004a0cce7724a805f4567843a2a67e79dacf", size = 85441, upload-time = "2026-04-13T18:47:44.527Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/1d/254f6b6f77ff2fc55779102fc46f470499cf774da75dcbeed183c35c8592/arepy-0.5.5.tar.gz", hash = "sha256:eabe3df8c6607dd6bc629ee3e159efb52d80484dbedddd8f3cd6c7e1d3058ae3", size = 84595, upload-time = "2026-04-29T15:58:50.828Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/f6/6e0060bfb70e7fde2eaffd7907c447876f5aaadb44aac910a325b8f0049e/arepy-0.5.4-py3-none-any.whl", hash = "sha256:ddaa4507be3e4fb66d0f7a442d3529f12c8122649959b164459db8cdea971cd0", size = 81625, upload-time = "2026-04-13T18:47:43.044Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/d4/202e1ed858a328eb8ffb8f9e92ce5abe1e8a0e8240480ce3610749f8dd39/arepy-0.5.5-py3-none-any.whl", hash = "sha256:7c539abbfd92d95001cd221b34fa305a502dc7cccd7a1e5b8c5d5863e09b4e99", size = 79544, upload-time = "2026-04-29T15:58:49.515Z" },
 ]
 
 [[package]]
@@ -28,6 +28,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "setuptools" },
 ]
 docs = [
     { name = "mkdocs-git-revision-date-localized-plugin" },
@@ -46,7 +47,7 @@ markup = [
 
 [package.metadata]
 requires-dist = [
-    { name = "arepy", specifier = "==0.5.4" },
+    { name = "arepy", specifier = "==0.5.5" },
     { name = "av", marker = "extra == 'full'", specifier = "==16.0.1" },
     { name = "cython", marker = "extra == 'dev'", specifier = ">=3.0" },
     { name = "cython", marker = "extra == 'markup'", specifier = ">=3.0" },
@@ -59,6 +60,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.10" },
+    { name = "setuptools", marker = "extra == 'dev'", specifier = "==82.0.1" },
 ]
 provides-extras = ["full", "dev", "docs", "markup"]
 
@@ -1255,6 +1257,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/51/b2/dc83cce2f38a3c72d6bf9268ef6c1708ab1b4d546074384e7e0d097bf4f6/selectolax-0.4.6-cp314-cp314t-win32.whl", hash = "sha256:f5017f6e2408160604c87fb21490d9af802d09dbc1b91ac89acd9922b7b04d31", size = 1890595, upload-time = "2025-12-06T12:35:29.625Z" },
     { url = "https://files.pythonhosted.org/packages/87/f9/8da49637643b1dffbcadc8972f1fee519c126978acaf5df59405e48424f4/selectolax-0.4.6-cp314-cp314t-win_amd64.whl", hash = "sha256:56adb0f014ab55627f20f53888a7bf1ec53aac8189fe344aec3d5077a7ad9889", size = 2005252, upload-time = "2025-12-06T12:35:31.116Z" },
     { url = "https://files.pythonhosted.org/packages/94/7f/f783e2254db082df4f6bc00fe3b32b9dd27c3b7302a44c8c37728bb67fb7/selectolax-0.4.6-cp314-cp314t-win_arm64.whl", hash = "sha256:66558cfb1c7402fed0f47b9a2692eed53e3e2f345526314b493b5093cb951e21", size = 1906079, upload-time = "2025-12-06T12:35:32.951Z" },
+]
+
+[[package]]
+name = "setuptools"
+version = "82.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/db/cfac1baf10650ab4d1c111714410d2fbb77ac5a616db26775db562c8fab2/setuptools-82.0.1.tar.gz", hash = "sha256:7d872682c5d01cfde07da7bccc7b65469d3dca203318515ada1de5eda35efbf9", size = 1152316, upload-time = "2026-03-09T12:47:17.221Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9d/76/f789f7a86709c6b087c5a2f52f911838cad707cc613162401badc665acfe/setuptools-82.0.1-py3-none-any.whl", hash = "sha256:a59e362652f08dcd477c78bb6e7bd9d80a7995bc73ce773050228a348ce2e5bb", size = 1006223, upload-time = "2026-03-09T12:47:15.026Z" },
 ]
 
 [[package]]

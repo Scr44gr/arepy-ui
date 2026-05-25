@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Callable, Optional, Tuple, List
+from typing import Any, Callable, Optional, Tuple, List
 
 from arepy import TextureFilter
 from arepy.engine.input import Key
@@ -150,24 +150,26 @@ def notify_font_texture_filter_change(filter: TextureFilter) -> None:
     via the FontManager. Failures while applying are swallowed to avoid
     breaking UI initialization.
     """
+    font_manager_factory: Optional[Callable[[], Any]] = None
+    runtime_factory: Optional[Callable[[], Any]] = None
+    texture_cls: Optional[type[Any]] = None
+
     try:
-        from .core.fonts import get_font_manager
-        from arepy import ArepyTexture
-        from ..runtime import get_runtime
+        from .core.fonts import get_font_manager as font_manager_factory
+        from .runtime import get_runtime as runtime_factory
+        from arepy import ArepyTexture as texture_cls
     except Exception:
         # Required modules unavailable; still notify listeners below.
-        get_font_manager = None
-        ArepyTexture = None
-        get_runtime = None
+        pass
 
     # Apply filter to already-loaded fonts if possible
-    if get_font_manager and ArepyTexture and get_runtime:
+    if font_manager_factory and texture_cls and runtime_factory:
         try:
-            fm = get_font_manager()
-            runtime = get_runtime()
+            fm = font_manager_factory()
+            runtime = runtime_factory()
             for font_info in fm._fonts.values():
                 try:
-                    tmp_tex = ArepyTexture(
+                    tmp_tex = texture_cls(
                         -1, size=(font_info.base_size, font_info.base_size)
                     )
                     tmp_tex._ref_texture = getattr(

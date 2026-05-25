@@ -1,5 +1,7 @@
 """Type stubs for aui_parser Cython module."""
 
+from typing import Any
+
 class AUINode:
     """Represents a parsed AUI element node."""
 
@@ -32,7 +34,7 @@ class AUINode:
         """Get the id attribute value."""
         ...
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert node tree to dictionary representation."""
         ...
 

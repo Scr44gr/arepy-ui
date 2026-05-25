@@ -277,7 +277,7 @@ def main():
     world = game.create_world("animation_demo")
 
     global ui_manager
-    ui_manager = UIManager.install(world, root=create_ui())
+    ui_manager = UIManager.install(world, root=create_ui)
 
     game.set_current_world("animation_demo")
     game.run()

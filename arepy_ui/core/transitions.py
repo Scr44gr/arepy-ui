@@ -361,7 +361,7 @@ class CircleReveal:
         # or render textures with stencil operations
 
         # Draw the masking color everywhere
-        runtime.renderer.draw_rectangle(Rect(0, 0, screen_w, screen_h), self.color)  # type: ignore
+        runtime.renderer.draw_rectangle(Rect(0, 0, screen_w, screen_h), self.color)
 
         # "Cut out" the circle by drawing it transparent (won't work without stencil)
         # Instead, we'll draw the circle with blend mode
@@ -379,7 +379,7 @@ class CircleReveal:
         runtime.renderer.draw_circle(
             (int(self.center_x), int(self.center_y)),
             self._current_radius,
-            self.color,  # type: ignore
+            self.color,
         )
 
     @property
@@ -461,7 +461,7 @@ class FadeTransition:
         screen_w, screen_h = runtime.display.get_window_size()
 
         fade_color = Color(self.color.r, self.color.g, self.color.b, self._alpha)
-        runtime.renderer.draw_rectangle(Rect(0, 0, screen_w, screen_h), fade_color)  # type: ignore
+        runtime.renderer.draw_rectangle(Rect(0, 0, screen_w, screen_h), fade_color)
 
     @property
     def is_finished(self) -> bool:

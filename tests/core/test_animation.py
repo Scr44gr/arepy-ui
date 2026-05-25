@@ -155,11 +155,19 @@ class TestAnimation:
 
     def test_animation_cannot_be_modified_after_start(self):
         animator = Animator()
-        animation = animator.create().to(object(), "__class__", object, 0.0)
+        target = DummyTarget()
+        animation = animator.create().to(target, "x", 1.0, 0.0)
         animation.start()
 
         with pytest.raises(RuntimeError):
             animation.wait(0.1)
+
+    def test_animation_rejects_private_attribute_paths(self):
+        animator = Animator()
+        target = DummyTarget()
+
+        with pytest.raises(ValueError):
+            animator.create().to(target, "__class__", object, 0.0)
 
 
 class TestAnimator:

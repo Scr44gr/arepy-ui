@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from copy import copy
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, Optional, Sequence
 
 from arepy_ui.core.style import Style
 from arepy_ui.markup.converters import (
@@ -95,7 +95,34 @@ _TAG_ATTRIBUTE_PLAN_CACHE: OrderedDict[tuple[object, ...], _TagAttributePlan] = 
 )
 _COMPILED_NODE_PLAN_CACHE: OrderedDict[int, _CompiledNodePlan] = OrderedDict()
 
-_NOOP_HANDLER = lambda: None
+
+def _NOOP_HANDLER() -> None:
+    return None
+
+
+def _attr_as_str(value: object, default: str = "") -> str:
+    return value if isinstance(value, str) else default
+
+
+def _attr_as_optional_str(value: object) -> Optional[str]:
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _attr_is_true(value: object) -> bool:
+    return value is True or (isinstance(value, str) and value.lower() == "true")
+
+
+def _first_string_attr(
+    attrs: Mapping[str, object],
+    names: Sequence[str],
+) -> Optional[str]:
+    for name in names:
+        value = _attr_as_optional_str(attrs.get(name))
+        if value is not None:
+            return value
+    return None
 
 
 def _cache_get(
@@ -142,7 +169,7 @@ def _build_style_cache_key(
         node.tag,
         tuple(class_names),
         element_id,
-        node.attributes.get("style", ""),
+        _attr_as_str(node.attributes.get("style")),
     )
 
 
@@ -164,7 +191,10 @@ def _build_interaction_cache_key(
 
 def _option_signature(node: AUINode) -> tuple[tuple[str, str], ...]:
     return tuple(
-        (child.attributes.get("value", ""), child.text_content or "")
+        (
+            _attr_as_str(child.attributes.get("value"), child.text_content or ""),
+            child.text_content or "",
+        )
         for child in node.children
         if child.tag == "option"
     )
@@ -249,7 +279,7 @@ def _build_tag_attribute_plan(node: AUINode) -> _TagAttributePlan:
     needs_interaction_colors = False
 
     if tag == "text":
-        static_kwargs["text"] = node.text_content or attrs.get("text", "")
+        static_kwargs["text"] = node.text_content or _attr_as_str(attrs.get("text"))
         if "size" in attrs:
             static_kwargs["size"] = float(attrs["size"])
         if "color" in attrs:
@@ -258,7 +288,9 @@ def _build_tag_attribute_plan(node: AUINode) -> _TagAttributePlan:
                 static_kwargs["color"] = color
 
     elif tag == "button":
-        static_kwargs["text"] = node.text_content or attrs.get("text", "Button")
+        static_kwargs["text"] = node.text_content or _attr_as_str(
+            attrs.get("text"), "Button"
+        )
         if "width" in attrs:
             static_kwargs["width"] = convert_to_unit(attrs["width"])
         if "height" in attrs:
@@ -267,7 +299,7 @@ def _build_tag_attribute_plan(node: AUINode) -> _TagAttributePlan:
         needs_interaction_colors = True
 
     elif tag == "input":
-        static_kwargs["placeholder"] = attrs.get("placeholder", "")
+        static_kwargs["placeholder"] = _attr_as_str(attrs.get("placeholder"))
         if "value" in attrs:
             static_kwargs["text"] = attrs["value"]
         if "width" in attrs:
@@ -284,30 +316,33 @@ def _build_tag_attribute_plan(node: AUINode) -> _TagAttributePlan:
 
     elif tag == "checkbox":
         checked = attrs.get("checked", False)
-        static_kwargs["checked"] = checked == "true" or checked is True
+        static_kwargs["checked"] = _attr_is_true(checked)
         handler_bindings.append((("on-change",), "on_change", False))
         needs_interaction_colors = True
 
     elif tag in ("image", "img"):
-        static_kwargs["src"] = attrs.get("src", "")
+        static_kwargs["src"] = _attr_as_str(attrs.get("src"))
 
     elif tag == "progress":
         static_kwargs["value"] = float(attrs.get("value", 0))
         static_kwargs["max_value"] = float(attrs.get("max", 100))
 
     elif tag == "video":
-        static_kwargs["source"] = attrs.get("src", attrs.get("source", ""))
+        static_kwargs["source"] = _attr_as_str(
+            attrs.get("src"),
+            _attr_as_str(attrs.get("source")),
+        )
         if "width" in attrs:
             static_kwargs["width"] = convert_to_unit(attrs["width"])
         if "height" in attrs:
             static_kwargs["height"] = convert_to_unit(attrs["height"])
-        static_kwargs["autoplay"] = attrs.get("autoplay", "false").lower() == "true"
-        static_kwargs["loop"] = attrs.get("loop", "false").lower() == "true"
-        static_kwargs["muted"] = attrs.get("muted", "false").lower() == "true"
+        static_kwargs["autoplay"] = _attr_is_true(attrs.get("autoplay", False))
+        static_kwargs["loop"] = _attr_is_true(attrs.get("loop", False))
+        static_kwargs["muted"] = _attr_is_true(attrs.get("muted", False))
 
     elif tag == "select":
         static_kwargs["options"] = [
-            child.attributes.get("value", child.text_content or "")
+            _attr_as_str(child.attributes.get("value"), child.text_content or "")
             for child in node.children
             if child.tag == "option"
         ]
@@ -328,9 +363,9 @@ def _build_tag_attribute_plan(node: AUINode) -> _TagAttributePlan:
         if "color" in attrs:
             static_kwargs["color"] = convert_to_color(attrs["color"])
         if "show-alpha" in attrs:
-            static_kwargs["show_alpha"] = attrs["show-alpha"].lower() == "true"
+            static_kwargs["show_alpha"] = _attr_is_true(attrs["show-alpha"])
         if "show-preview" in attrs:
-            static_kwargs["show_preview"] = attrs["show-preview"].lower() == "true"
+            static_kwargs["show_preview"] = _attr_is_true(attrs["show-preview"])
         handler_bindings.append((("on-change",), "on_change", False))
 
     return _TagAttributePlan(
@@ -536,7 +571,7 @@ def resolve_styles(
     style_dict: Dict[str, Any] = {}
     globals_registry = get_global_styles()
     class_names = tuple(node.get_classes())
-    element_id = node.attributes.get("id")
+    element_id = _attr_as_optional_str(node.attributes.get("id"))
     cache_key = _build_style_cache_key(
         node,
         stylesheet,
@@ -596,7 +631,7 @@ def resolve_styles(
                     style_dict[style_key] = _convert_style_value(style_key, value)
 
     # 7. Inline styles (highest priority)
-    inline_style = node.attributes.get("style", "")
+    inline_style = _attr_as_str(node.attributes.get("style"))
     if inline_style:
         for declaration in inline_style.split(";"):
             if ":" in declaration:
@@ -633,8 +668,8 @@ def _convert_style_value(style_key: str, value: Any) -> Any:
 def build_component(
     node: AUINode,
     stylesheet: Optional[StyleSheet],
-    handlers: Dict[str, Callable[..., Any]],
-    components: Dict[str, type],
+    handlers: Mapping[str, Callable[..., Any]],
+    components: Mapping[str, type[Any]],
     errors: Optional[ErrorCollector] = None,
 ) -> Optional[Node]:
     """
@@ -665,8 +700,8 @@ def build_component(
 def _build_component_from_plan(
     plan: _CompiledNodePlan,
     stylesheet: Optional[StyleSheet],
-    handlers: Dict[str, Callable[..., Any]],
-    components: Dict[str, type],
+    handlers: Mapping[str, Callable[..., Any]],
+    components: Mapping[str, type[Any]],
     errors: ErrorCollector,
 ) -> Optional[Node]:
     node = plan.node
@@ -702,8 +737,9 @@ def _build_component_from_plan(
     if style:
         kwargs["style"] = style
 
-    if "id" in node.attributes:
-        kwargs["id"] = node.attributes["id"]
+    element_id = _attr_as_optional_str(node.attributes.get("id"))
+    if element_id is not None:
+        kwargs["id"] = element_id
 
     _apply_tag_attributes(
         tag,
@@ -781,7 +817,7 @@ def _build_component_from_plan(
 def _apply_tag_attributes(
     tag: str,
     node: AUINode,
-    handlers: Dict[str, Callable[..., Any]],
+    handlers: Mapping[str, Callable[..., Any]],
     kwargs: Dict[str, Any],
     style_props: Dict[str, Any],
     stylesheet: Optional[StyleSheet] = None,
@@ -789,14 +825,12 @@ def _apply_tag_attributes(
     """Apply tag-specific attributes to kwargs."""
     attrs = node.attributes
     class_names = tuple(node.get_classes())
-    element_id = attrs.get("id")
+    element_id = _attr_as_optional_str(attrs.get("id"))
     plan = _get_tag_attribute_plan(node)
     kwargs.update(_clone_plan_kwargs(plan.static_kwargs))
 
     for attr_names, target_kwarg, use_default in plan.handler_bindings:
-        handler_name = next(
-            (attrs.get(name) for name in attr_names if attrs.get(name)), None
-        )
+        handler_name = _first_string_attr(attrs, attr_names)
         if handler_name and handler_name in handlers:
             kwargs[target_kwarg] = handlers[handler_name]
         elif use_default:

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional, cast
 
 from .types import (
     AlignItems,
@@ -19,6 +19,12 @@ class Spacing:
     right: Unit = field(default_factory=lambda: Unit.px(0))
     bottom: Unit = field(default_factory=lambda: Unit.px(0))
     left: Unit = field(default_factory=lambda: Unit.px(0))
+    _owner_style: Optional["Style"] = field(
+        init=False,
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self):
         object.__setattr__(self, "_owner_style", None)
@@ -92,6 +98,12 @@ class Style:
 
     # Cursor
     cursor: Optional[CursorType] = None
+    _owner: Optional[object] = field(
+        init=False,
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     _LAYOUT_FIELDS = {
         "width",
@@ -159,9 +171,15 @@ class Style:
         return True
 
     def _notify_layout_changed(self) -> None:
-        owner = getattr(self, "_owner", None)
-        if owner is not None and hasattr(owner, "mark_dirty"):
-            owner.mark_dirty()
+        owner = self._owner
+        if owner is None:
+            return
+
+        dynamic_owner = cast(Any, owner)
+        try:
+            dynamic_owner.mark_dirty()
+        except AttributeError:
+            pass
 
 
 def clone_spacing(spacing: Spacing) -> Spacing:

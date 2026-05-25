@@ -106,7 +106,7 @@ class TestTabs:
 
         tabs.set_tab(1)
 
-        tabs._manager.mark_dirty.assert_called_once()  # type: ignore
+        tabs._manager.mark_dirty.assert_called_once()
 
     def test_tabs_has_tab_bar(self, mock_runtime):
         from arepy_ui.components.tabs import Tabs

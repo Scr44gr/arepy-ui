@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Callable, Protocol, TypeAlias
+from typing import Any, Callable, Protocol, TypeAlias
 
 # Type aliases for better readability
 AttributeValue: TypeAlias = str | bool
 AttributeDict: TypeAlias = dict[str, AttributeValue]
 HandlerDict: TypeAlias = dict[str, Callable[..., object]]
-ParseResult: TypeAlias = tuple["AUINodeProtocol" | None, list[str]]
+ParseResult: TypeAlias = tuple["AUINodeProtocol | None", list[str]]
 StyleDict: TypeAlias = dict[str, object]
 
 
@@ -26,7 +26,7 @@ class AUINodeProtocol(Protocol):
     def get_class(self) -> str: ...
     def get_classes(self) -> list[str]: ...
     def get_id(self) -> str: ...
-    def to_dict(self) -> dict[str, object]: ...
+    def to_dict(self) -> dict[str, Any]: ...
 
 
 class StyleSheetProtocol(Protocol):

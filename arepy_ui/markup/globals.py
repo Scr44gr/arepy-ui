@@ -28,6 +28,32 @@ if TYPE_CHECKING:
     from arepy_ui.markup.parsers.css_parser import StyleSheet
 
 
+def _resolve_sheet_styles(
+    sheet: "StyleSheet", raw_method: str, selector: str
+) -> Dict[str, object]:
+    """Resolve raw selector properties across parser versions."""
+    resolver = getattr(sheet, raw_method, None)
+    if resolver is not None:
+        if selector.startswith("#"):
+            return resolver(selector[1:])
+        if selector.startswith("."):
+            return resolver(selector[1:])
+        if ":" in selector:
+            base_selector, pseudo = selector.rsplit(":", 1)
+            if base_selector.startswith("#"):
+                return resolver(base_selector[1:], pseudo)
+            if base_selector.startswith("."):
+                return resolver(base_selector[1:], pseudo)
+            return resolver(base_selector, pseudo)
+        return resolver(selector)
+
+    result: Dict[str, object] = {}
+    for rule in sheet.rules:
+        if rule.selector == selector:
+            result.update(rule.properties)
+    return result
+
+
 class ThemeVariables:
     """Manages CSS variables with theme variant support."""
 
@@ -212,7 +238,7 @@ class GlobalStyleRegistry:
 
         result: Dict[str, object] = {}
         for sheet in self._stylesheets:
-            result.update(sheet.raw_resolve_element(tag))
+            result.update(_resolve_sheet_styles(sheet, "raw_resolve_element", tag))
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result
@@ -226,7 +252,7 @@ class GlobalStyleRegistry:
 
         result: Dict[str, object] = {}
         for sheet in self._stylesheets:
-            result.update(sheet.raw_resolve_class(class_name))
+            result.update(_resolve_sheet_styles(sheet, "raw_resolve_class", f".{class_name}"))
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result
@@ -247,7 +273,7 @@ class GlobalStyleRegistry:
 
         result: Dict[str, object] = {}
         for sheet in self._stylesheets:
-            result.update(sheet.raw_resolve_id(id_name))
+            result.update(_resolve_sheet_styles(sheet, "raw_resolve_id", f"#{id_name}"))
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result
@@ -261,7 +287,11 @@ class GlobalStyleRegistry:
 
         result: Dict[str, object] = {}
         for sheet in self._stylesheets:
-            result.update(sheet.raw_resolve_element_pseudo(tag, pseudo))
+            result.update(
+                _resolve_sheet_styles(
+                    sheet, "raw_resolve_element_pseudo", f"{tag}:{pseudo}"
+                )
+            )
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result
@@ -277,7 +307,11 @@ class GlobalStyleRegistry:
 
         result: Dict[str, object] = {}
         for sheet in self._stylesheets:
-            result.update(sheet.raw_resolve_class_pseudo(class_name, pseudo))
+            result.update(
+                _resolve_sheet_styles(
+                    sheet, "raw_resolve_class_pseudo", f".{class_name}:{pseudo}"
+                )
+            )
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result
@@ -291,7 +325,11 @@ class GlobalStyleRegistry:
 
         result: Dict[str, object] = {}
         for sheet in self._stylesheets:
-            result.update(sheet.raw_resolve_id_pseudo(id_name, pseudo))
+            result.update(
+                _resolve_sheet_styles(
+                    sheet, "raw_resolve_id_pseudo", f"#{id_name}:{pseudo}"
+                )
+            )
 
         result = self._resolve_variables_in_props(result)
         self._cache[cache_key] = result

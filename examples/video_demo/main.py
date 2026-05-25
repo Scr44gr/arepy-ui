@@ -12,6 +12,8 @@ ALL UI is defined in ui.aui and ui.acss files - no Python Node creation!
 """
 
 import raylib as rl
+from typing import Any, Callable, Dict
+
 from arepy import ArepyEngine, Display, Input, Renderer2D, SystemPipeline
 from arepy.ecs.world import World
 
@@ -45,7 +47,7 @@ def on_subscribe():
 def setup_ui():
     """Load UI purely from markup files - NO Python Node creation!"""
 
-    handlers = {
+    handlers: Dict[str, Callable[..., Any]] = {
         "on_like": on_like,
         "on_dislike": on_dislike,
         "on_share": on_share,

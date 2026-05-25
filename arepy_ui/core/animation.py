@@ -1,32 +1,53 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
+import keyword
 from numbers import Real
-from typing import Any, Callable, Protocol, TypeAlias
+from typing import Any, Callable, Protocol, TypeAlias, cast
 
 from .easing import Easing, apply_easing
 from .types import Unit
 
 EasingFunction: TypeAlias = Callable[[float], float]
 EasingLike: TypeAlias = int | EasingFunction
+PropertyGetter: TypeAlias = Callable[[Any], Any]
+PropertySetter: TypeAlias = Callable[[Any, Any], None]
 
 
-def _resolve_property(target: Any, property_name: str) -> tuple[Any, str]:
-    obj = target
+@lru_cache(maxsize=None)
+def _compile_property_accessor(property_name: str) -> tuple[PropertyGetter, PropertySetter]:
     parts = property_name.split(".")
-    for part in parts[:-1]:
-        obj = getattr(obj, part)
-    return obj, parts[-1]
+    if not parts or any(
+        not part.isidentifier() or part.startswith("_") or keyword.iskeyword(part)
+        for part in parts
+    ):
+        raise ValueError(f"Invalid animation property path: {property_name!r}")
+
+    property_path = ".".join(parts)
+    namespace: dict[str, object] = {}
+    exec(
+        "def getter(target):\n"
+        f"    return target.{property_path}\n\n"
+        "def setter(target, value):\n"
+        f"    target.{property_path} = value\n",
+        {},
+        namespace,
+    )
+    return (
+        cast(PropertyGetter, namespace["getter"]),
+        cast(PropertySetter, namespace["setter"]),
+    )
 
 
 def _read_property(target: Any, property_name: str) -> Any:
-    obj, attr = _resolve_property(target, property_name)
-    return getattr(obj, attr)
+    getter, _ = _compile_property_accessor(property_name)
+    return getter(target)
 
 
 def _write_property(target: Any, property_name: str, value: Any) -> None:
-    obj, attr = _resolve_property(target, property_name)
-    setattr(obj, attr, value)
+    _, setter = _compile_property_accessor(property_name)
+    setter(target, value)
 
 
 def _is_number(value: Any) -> bool:
@@ -41,6 +62,13 @@ def _is_color_like(value: Any) -> bool:
     return hasattr(value, "r") and hasattr(value, "g") and hasattr(value, "b")
 
 
+def _get_color_alpha(value: Any) -> int:
+    try:
+        return int(value.a)
+    except AttributeError:
+        return 255
+
+
 def _copy_value(value: Any) -> Any:
     if isinstance(value, Unit):
         return Unit(value.value, value.type)
@@ -51,7 +79,7 @@ def _copy_value(value: Any) -> Any:
             int(value.r),
             int(value.g),
             int(value.b),
-            int(getattr(value, "a", 255)),
+            _get_color_alpha(value),
         )
     return value
 
@@ -100,8 +128,8 @@ def _interpolate_value(start: Any, end: Any, progress: float) -> Any:
         )
 
     if _is_color_like(start) and _is_color_like(end):
-        start_a = int(getattr(start, "a", 255))
-        end_a = int(getattr(end, "a", 255))
+        start_a = _get_color_alpha(start)
+        end_a = _get_color_alpha(end)
         if progress <= 0.0:
             return _copy_value(start)
         if progress >= 1.0:
@@ -149,7 +177,7 @@ class _WaitStep:
 
 @dataclass
 class _CallStep:
-    callback: Callable[[], None]
+    callback: Callable[[], object]
     called: bool = False
 
     def reset(self) -> None:
@@ -172,6 +200,11 @@ class _TweenStep:
     elapsed: float = 0.0
     started: bool = False
     start_value: Any = field(default=None, init=False)
+    _getter: PropertyGetter = field(init=False, repr=False)
+    _setter: PropertySetter = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._getter, self._setter = _compile_property_accessor(self.property_name)
 
     def reset(self) -> None:
         self.elapsed = 0.0
@@ -182,15 +215,14 @@ class _TweenStep:
         if self.started:
             return
         self.started = True
-        self.start_value = _copy_value(_read_property(self.target, self.property_name))
+        self.start_value = _copy_value(self._getter(self.target))
 
     def advance(self, dt: float) -> tuple[float, bool]:
         self._ensure_started()
 
         if self.duration <= 0.0:
-            _write_property(
+            self._setter(
                 self.target,
-                self.property_name,
                 _interpolate_value(self.start_value, self.end_value, 1.0),
             )
             return 0.0, True
@@ -200,9 +232,8 @@ class _TweenStep:
         self.elapsed += consumed
         progress = min(self.elapsed / self.duration, 1.0)
         eased_progress = _apply_easing(progress, self.easing)
-        _write_property(
+        self._setter(
             self.target,
-            self.property_name,
             _interpolate_value(self.start_value, self.end_value, eased_progress),
         )
         return consumed, self.elapsed >= self.duration
@@ -256,7 +287,7 @@ class Animation:
         )
         return self
 
-    def call(self, callback: Callable[[], None]) -> "Animation":
+    def call(self, callback: Callable[[], object]) -> "Animation":
         self._ensure_editable()
         self._steps.append(_CallStep(callback=callback))
         return self

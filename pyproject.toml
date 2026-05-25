@@ -103,3 +103,6 @@ package = true
 
 [tool.ty.environment]
 root = ["./"]
+
+[tool.ty.src]
+exclude = ["examples/demo_blue_hour_menu.py"]
