@@ -1,0 +1,1 @@
+"""Game UI prototype package."""

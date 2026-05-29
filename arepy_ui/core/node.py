@@ -1,3 +1,4 @@
+import math
 from typing import Callable, List, Optional
 
 from arepy.engine.renderer import Rect
@@ -605,7 +606,7 @@ class Node:
         # Draw Border
         if self.style.border_width > 0 and self.style.border_color:
             # Raylib doesn't have draw_rectangle_rounded_lines with thickness easily
-            # We can simulate or use lines
+            # Simulate rounded border thickness by drawing inset outlines.
             rect = Rect(
                 self.computed_x,
                 self.computed_y,
@@ -613,13 +614,27 @@ class Node:
                 int(self.computed_height),
             )
             if self.style.border_radius > 0:
-                runtime.renderer.draw_rectangle_rounded_lines(
-                    rect,
-                    self.style.border_radius
-                    / min(self.computed_width, self.computed_height),
-                    10,
-                    self.style.border_color,
-                )
+                border_thickness = max(1, int(math.ceil(self.style.border_width)))
+                for inset in range(border_thickness):
+                    inset_width = self.computed_width - inset * 2
+                    inset_height = self.computed_height - inset * 2
+                    if inset_width <= 0 or inset_height <= 0:
+                        break
+
+                    inset_rect = Rect(
+                        int(self.computed_x + inset),
+                        int(self.computed_y + inset),
+                        int(inset_width),
+                        int(inset_height),
+                    )
+                    min_dim = min(inset_width, inset_height)
+                    roundness = self.style.border_radius / min_dim if min_dim > 0 else 0
+                    runtime.renderer.draw_rectangle_rounded_lines(
+                        inset_rect,
+                        roundness,
+                        10,
+                        self.style.border_color,
+                    )
             else:
                 runtime.renderer.draw_rectangle_lines_ex(
                     rect,
