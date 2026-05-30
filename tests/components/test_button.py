@@ -13,8 +13,10 @@ def mock_runtime():
     mock_metrics = TextMetrics(width=100.0, height=20.0, line_height=24.0)
 
     with patch("arepy_ui.core.fonts.get_font_manager") as mock_fm:
-        mock_fm.return_value.measure_text_ex.return_value = mock_metrics
-        yield mock_fm
+        manager = mock_fm.return_value
+        manager.measure_text_ex.return_value = mock_metrics
+        manager.draw_text = MagicMock()
+        yield manager
 
 
 class TestButton:
@@ -98,3 +100,70 @@ class TestButton:
 
         assert btn.style.margin.top.value == 6
         assert btn.style.margin.left.value == 10
+
+    def test_button_render_uses_texture_when_visual_transform_active(self, mock_runtime):
+        from arepy.engine.renderer import Rect
+        from arepy_ui.components.button import Button
+        from arepy_ui.core.types import Color, Unit
+
+        texture = MagicMock()
+        texture.get_size.return_value = (120, 48)
+
+        runtime = MagicMock()
+        runtime.display.get_window_size.return_value = (1280, 720)
+        runtime.renderer.create_render_texture.return_value = texture
+
+        btn = Button(
+            text="Styled",
+            on_click=lambda: None,
+            width=Unit.px(120),
+            height=Unit.px(48),
+            bg_color=Color(100, 100, 100, 255),
+        )
+        btn.render_via_texture = True
+        btn.visual_scale_x = 1.08
+        btn.visual_scale_y = 0.94
+        btn.visual_rotation_degrees = 3.0
+        btn.computed_x = 32
+        btn.computed_y = 64
+        btn.computed_width = 120
+        btn.computed_height = 48
+        btn.text_node.computed_x = 56
+        btn.text_node.computed_y = 76
+
+        with patch("arepy_ui.components.button.get_runtime", return_value=runtime):
+            btn.render()
+
+        runtime.renderer.create_render_texture.assert_called_once_with(120, 48)
+        runtime.renderer.bind_render_texture.assert_called_once_with(texture)
+        runtime.renderer.draw_texture_ex.assert_called_once()
+        _, _, destination_rect, origin, _, _ = runtime.renderer.draw_texture_ex.call_args[0]
+        assert destination_rect == Rect(92.0, 88.0, 130, 45)
+        assert origin == (65.0, 22.5)
+        mock_runtime.draw_text.assert_called_once()
+
+    def test_button_hitbox_uses_visual_scale(self, mock_runtime):
+        from arepy_ui.components.button import Button
+        from arepy_ui.core.types import Color, Unit, Vector2
+
+        runtime = MagicMock()
+        runtime.input.is_mouse_button_down.return_value = False
+
+        btn = Button(
+            text="Hover",
+            on_click=lambda: None,
+            width=Unit.px(100),
+            height=Unit.px(40),
+            bg_color=Color(100, 100, 100, 255),
+        )
+        btn.computed_x = 0
+        btn.computed_y = 0
+        btn.computed_width = 100
+        btn.computed_height = 40
+        btn.visual_scale_x = 1.2
+        btn.visual_scale_y = 1.1
+
+        with patch("arepy_ui.components.button.get_runtime", return_value=runtime):
+            btn.handle_input(Vector2(105, 20), is_click=False)
+
+        assert btn.is_hovered is True

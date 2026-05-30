@@ -606,7 +606,7 @@ class Node:
         # Draw Border
         if self.style.border_width > 0 and self.style.border_color:
             # Raylib doesn't have draw_rectangle_rounded_lines with thickness easily
-            # Simulate rounded border thickness by drawing inset outlines.
+            # so prefer a solid rounded band when a background fill exists.
             rect = Rect(
                 self.computed_x,
                 self.computed_y,
@@ -614,27 +614,71 @@ class Node:
                 int(self.computed_height),
             )
             if self.style.border_radius > 0:
-                border_thickness = max(1, int(math.ceil(self.style.border_width)))
-                for inset in range(border_thickness):
-                    inset_width = self.computed_width - inset * 2
-                    inset_height = self.computed_height - inset * 2
-                    if inset_width <= 0 or inset_height <= 0:
-                        break
+                border_thickness = max(1.0, float(self.style.border_width))
+                min_dim = min(self.computed_width, self.computed_height)
+                roundness = self.style.border_radius / min_dim if min_dim > 0 else 0
 
-                    inset_rect = Rect(
-                        int(self.computed_x + inset),
-                        int(self.computed_y + inset),
-                        int(inset_width),
-                        int(inset_height),
-                    )
-                    min_dim = min(inset_width, inset_height)
-                    roundness = self.style.border_radius / min_dim if min_dim > 0 else 0
-                    runtime.renderer.draw_rectangle_rounded_lines(
-                        inset_rect,
+                if self.style.background_color is not None:
+                    runtime.renderer.draw_rectangle_rounded(
+                        rect,
                         roundness,
                         10,
                         self.style.border_color,
                     )
+
+                    inset = border_thickness
+                    inset_width = self.computed_width - inset * 2
+                    inset_height = self.computed_height - inset * 2
+                    if inset_width > 0 and inset_height > 0:
+                        inner_rect = Rect(
+                            self.computed_x + inset,
+                            self.computed_y + inset,
+                            int(inset_width),
+                            int(inset_height),
+                        )
+                        inner_color = self.style.background_color
+                        if self.style.opacity < 1.0:
+                            inner_color = Color(
+                                inner_color.r,
+                                inner_color.g,
+                                inner_color.b,
+                                int(inner_color.a * self.style.opacity),
+                            )
+                        inner_radius = max(0.0, self.style.border_radius - inset)
+                        inner_min_dim = min(inset_width, inset_height)
+                        inner_roundness = (
+                            inner_radius / inner_min_dim if inner_min_dim > 0 else 0
+                        )
+                        runtime.renderer.draw_rectangle_rounded(
+                            inner_rect,
+                            inner_roundness,
+                            10,
+                            inner_color,
+                        )
+                else:
+                    border_thickness_steps = max(1, int(math.ceil(border_thickness)))
+                    for inset in range(border_thickness_steps):
+                        inset_width = self.computed_width - inset * 2
+                        inset_height = self.computed_height - inset * 2
+                        if inset_width <= 0 or inset_height <= 0:
+                            break
+
+                        inset_rect = Rect(
+                            int(self.computed_x + inset),
+                            int(self.computed_y + inset),
+                            int(inset_width),
+                            int(inset_height),
+                        )
+                        inset_min_dim = min(inset_width, inset_height)
+                        inset_roundness = (
+                            self.style.border_radius / inset_min_dim if inset_min_dim > 0 else 0
+                        )
+                        runtime.renderer.draw_rectangle_rounded_lines(
+                            inset_rect,
+                            inset_roundness,
+                            10,
+                            self.style.border_color,
+                        )
             else:
                 runtime.renderer.draw_rectangle_lines_ex(
                     rect,

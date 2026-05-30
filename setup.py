@@ -6,6 +6,7 @@ This is called automatically by setuptools during pip install.
 import os
 
 from setuptools import Extension, setup
+from setuptools.command.build_ext import build_ext as setuptools_build_ext
 
 # Check if Cython is available
 try:
@@ -14,6 +15,18 @@ try:
     USE_CYTHON = True
 except ImportError:
     USE_CYTHON = False
+
+
+class build_ext(setuptools_build_ext):
+    def finalize_options(self):
+        super().finalize_options()
+        if self.editable_mode and self._uses_strict_editable_mode():
+            self.inplace = False
+
+    def _uses_strict_editable_mode(self):
+        editable_wheel = self.distribution.get_command_obj("editable_wheel")
+        mode = getattr(editable_wheel, "mode", None)
+        return str(mode).lower() == "strict"
 
 
 def get_extensions():
@@ -76,4 +89,5 @@ def get_extensions():
 if __name__ == "__main__":
     setup(
         ext_modules=get_extensions(),
+        cmdclass={"build_ext": build_ext},
     )

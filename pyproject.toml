@@ -25,7 +25,13 @@ readme = "README.md"
 
 [project.optional-dependencies]
 full = ["av==16.0.1", "numpy==2.3.5"]
-dev = ["pytest>=8.0", "pytest-cov>=4.0", "cython>=3.0", "ruff>=0.14.10", "setuptools==82.0.1"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "cython>=3.0",
+    "ruff>=0.14.10",
+    "setuptools==82.0.1",
+]
 docs = [
     "mkdocs-material>=9.5",
     "mkdocs-glightbox",
@@ -100,6 +106,7 @@ before-build = "pip install cython>=3.0"
 
 [tool.uv]
 package = true
+config-settings = { editable_mode = "strict" }
 
 [tool.ty.environment]
 root = ["./"]
