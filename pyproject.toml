@@ -19,7 +19,7 @@ classifiers = [
 ]
 keywords = ['arepy', 'ui', 'library', 'python']
 requires-python = ">=3.11"
-dependencies = ["arepy==0.5.5"]
+dependencies = ["arepy==0.6.0"]
 dynamic = ['version']
 readme = "README.md"
 
